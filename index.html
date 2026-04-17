@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Spatial DECM</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+      crossorigin=""
+    />
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css"
+    />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <input
+      id="file-input"
+      type="file"
+      multiple
+      accept=".geojson,.json,.kml,.gpx,.zip,.csv"
+      hidden
+    />
+
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="sidebar-scroll">
+          <div class="brand-block">
+            <div class="panel-heading brand-heading">
+              <div>
+                <p class="eyebrow">Spatial Explorer</p>
+                <h1>Spatial DECM</h1>
+              </div>
+              <button id="open-help-modal-btn" class="icon-button subtle" type="button" title="Open help">
+                i
+              </button>
+            </div>
+            <!-- <p class="intro">Explore. Create. Manipulate.</p> -->
+          </div>
+
+          <section class="panel layers-panel">
+            <div class="panel-heading">
+              <h2>Layers</h2>
+              <div class="panel-actions">
+                <button id="open-layer-modal-btn" class="icon-button" type="button" title="Browse or create layer">
+                  +
+                </button>
+                <button id="clear-all-btn" class="ghost-button" type="button">
+                  Clear All
+                </button>
+              </div>
+            </div>
+            <div class="layer-list-wrap">
+              <div id="layer-list" class="layer-list"></div>
+              <p id="empty-state" class="empty-state">
+                No layers loaded yet. Add one or more spatial files to begin.
+              </p>
+            </div>
+          </section>
+        </div>
+      </aside>
+
+      <main class="workspace-panel">
+        <section class="map-panel">
+          <div class="visually-hidden">
+            <span id="basemap-label">CartoDB Dark Matter</span>
+            <span id="status-message">Ready for spatial uploads.</span>
+          </div>
+          <button id="theme-cycle-btn" class="ghost-button floating-theme-btn" type="button">Dark</button>
+          <div id="map"></div>
+        </section>
+
+        <section class="table-panel">
+          <div id="table-resizer" class="table-resizer" aria-hidden="true"></div>
+          <div class="panel-heading">
+            <div>
+              <h2>Attribute Table</h2>
+              <p id="attribute-table-info" class="small-note">
+                Put a layer in edit mode to view and edit its attribute table.
+              </p>
+            </div>
+            <div class="panel-actions">
+              <button id="open-calculator-modal-btn" class="ghost-button" type="button">
+                Field Calculator
+              </button>
+              <button id="open-field-modal-btn" class="icon-button subtle" type="button" title="Add field to layer">
+                +
+              </button>
+            </div>
+          </div>
+          <div id="attribute-table-wrap" class="table-wrap empty-table table-dock">
+            <div class="table-placeholder">No editable layer selected.</div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <div id="export-modal" class="modal-shell" hidden>
+      <div class="modal-backdrop" data-close-export-modal="true"></div>
+      <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="export-modal-title">
+        <div class="panel-heading modal-heading">
+          <h2 id="export-modal-title">Export Layer</h2>
+          <button id="close-export-modal-btn" class="ghost-button" type="button">
+            Close
+          </button>
+        </div>
+        <p id="export-layer-label" class="small-note">
+          Choose a file name and format for export.
+        </p>
+        <div class="field-grid">
+          <label class="field-stack">
+            <span class="field-label">File name</span>
+            <input id="export-file-name" class="dark-input" type="text" placeholder="edited-layer" />
+          </label>
+          <label class="field-stack">
+            <span class="field-label">Format</span>
+            <select id="export-format" class="dark-input">
+              <option value="geojson">GeoJSON</option>
+              <option value="kml">KML</option>
+              <option value="shapefile">Shapefile ZIP</option>
+            </select>
+          </label>
+        </div>
+        <button id="confirm-export-btn" class="ghost-button" type="button">
+          Export File
+        </button>
+      </div>
+    </div>
+
+    <div id="layer-modal" class="modal-shell" hidden>
+      <div class="modal-backdrop" data-close-layer-modal="true"></div>
+      <div class="modal-card modal-card-small" role="dialog" aria-modal="true" aria-labelledby="layer-modal-title">
+        <div class="panel-heading modal-heading">
+          <h2 id="layer-modal-title">Add Layer</h2>
+          <button id="close-layer-modal-btn" class="ghost-button" type="button">
+            Close
+          </button>
+        </div>
+        <p class="small-note">
+          Browse for a spatial file or create a new empty layer with your own name.
+        </p>
+        <div class="modal-option-stack">
+          <button id="browse-layer-btn" class="ghost-button stretch-button" type="button">
+            Browse Files
+          </button>
+          <div class="field-grid">
+            <label class="field-stack">
+              <span class="field-label">New layer name</span>
+              <input id="new-layer-name" class="dark-input" type="text" placeholder="Sketch Layer" />
+            </label>
+          </div>
+          <button id="create-layer-btn" class="ghost-button stretch-button" type="button">
+            Create Empty Layer
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div id="field-modal" class="modal-shell" hidden>
+      <div class="modal-backdrop" data-close-field-modal="true"></div>
+      <div class="modal-card modal-card-small" role="dialog" aria-modal="true" aria-labelledby="field-modal-title">
+        <div class="panel-heading modal-heading">
+          <h2 id="field-modal-title">Add Field</h2>
+          <button id="close-field-modal-btn" class="ghost-button" type="button">
+            Close
+          </button>
+        </div>
+        <p class="small-note">
+          Add a new attribute field to every feature in the layer currently in edit mode.
+        </p>
+        <div class="field-grid">
+          <label class="field-stack">
+            <span class="field-label">Field name</span>
+            <input id="add-field-name" class="dark-input" type="text" placeholder="status" />
+          </label>
+          <label class="field-stack">
+            <span class="field-label">Default value</span>
+            <input id="add-field-value" class="dark-input" type="text" placeholder="active" />
+          </label>
+        </div>
+        <button id="add-field-btn" class="ghost-button stretch-button" type="button">
+          Add Field To Layer
+        </button>
+      </div>
+    </div>
+
+    <div id="calculator-modal" class="modal-shell" hidden>
+      <div class="modal-backdrop" data-close-calculator-modal="true"></div>
+      <div
+        class="modal-card modal-card-wide"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="calculator-modal-title"
+      >
+        <div class="panel-heading modal-heading">
+          <h2 id="calculator-modal-title">Field Calculator</h2>
+          <button id="close-calculator-modal-btn" class="ghost-button" type="button">
+            Close
+          </button>
+        </div>
+        <div class="calculator-topbar">
+          <div class="calculator-mode-group">
+            <label class="toggle-choice">
+              <input type="radio" name="calculator-mode" value="create" checked />
+              Create New Field
+            </label>
+            <label class="toggle-choice">
+              <input type="radio" name="calculator-mode" value="update" />
+              Update Existing Field
+            </label>
+          </div>
+          <div id="calculator-target-wrap" class="field-grid calculator-target-grid">
+            <label class="field-stack">
+              <span class="field-label">New field name</span>
+              <input id="calculator-new-field-name" class="dark-input" type="text" placeholder="calc_result" />
+            </label>
+            <label class="field-stack" id="calculator-existing-field-stack" hidden>
+              <span class="field-label">Existing field</span>
+              <select id="calculator-existing-field" class="dark-input"></select>
+            </label>
+          </div>
+        </div>
+        <div class="calculator-layout">
+          <section class="calculator-column">
+            <div class="calculator-column-header">
+              <h3>Fields</h3>
+              <input id="calculator-field-search" class="dark-input" type="text" placeholder="Search fields" />
+            </div>
+            <div id="calculator-field-list" class="calculator-list"></div>
+          </section>
+          <section class="calculator-column">
+            <div class="calculator-column-header">
+              <h3>Functions</h3>
+            </div>
+            <div id="calculator-function-list" class="calculator-list"></div>
+          </section>
+          <section class="calculator-column calculator-expression-column">
+            <div class="calculator-column-header">
+              <h3>Expression</h3>
+            </div>
+            <textarea
+              id="calculator-expression"
+              class="calculator-expression"
+              placeholder='Example: [name] || " - " || [category]'
+            ></textarea>
+            <div class="calculator-preview">
+              <div>
+                <strong>Preview</strong>
+                <p id="calculator-preview-text" class="small-note">
+                  Write an expression to preview it against the first feature.
+                </p>
+              </div>
+              <div id="calculator-error" class="calculator-error" hidden></div>
+            </div>
+            <div class="calculator-actions">
+              <button id="calculator-preview-btn" class="ghost-button" type="button">
+                Preview
+              </button>
+              <button id="calculator-apply-btn" class="ghost-button" type="button">
+                Apply To Layer
+              </button>
+            </div>
+          </section>
+        </div>
+      </div>
+    </div>
+
+    <div id="symbology-modal" class="modal-shell" hidden>
+      <div class="modal-backdrop" data-close-symbology-modal="true"></div>
+      <div class="modal-card modal-card-wide" role="dialog" aria-modal="true" aria-labelledby="symbology-modal-title">
+        <div class="panel-heading modal-heading">
+          <h2 id="symbology-modal-title">Layer Symbology</h2>
+          <button id="close-symbology-modal-btn" class="ghost-button" type="button">
+            Close
+          </button>
+        </div>
+        <p id="symbology-layer-label" class="small-note">
+          Choose how this layer should be styled.
+        </p>
+        <div class="field-grid">
+          <label class="field-stack">
+            <span class="field-label">Styling Type</span>
+            <select id="symbology-type" class="dark-input">
+              <option value="single">Single Color</option>
+              <option value="categorized">Categorized</option>
+              <option value="graduated">Graduated</option>
+            </select>
+          </label>
+          <label class="field-stack">
+            <span class="field-label">Attribute Field</span>
+            <select id="symbology-field" class="dark-input"></select>
+          </label>
+        </div>
+        <div id="single-style-panel" class="modal-subpanel">
+          <div class="field-grid">
+            <label class="field-stack">
+              <span class="field-label">Base color</span>
+              <input id="single-style-color" class="dark-input color-input" type="color" value="#1db7a6" />
+            </label>
+          </div>
+        </div>
+        <div id="categorized-style-panel" class="modal-subpanel" hidden>
+          <p class="small-note">Each unique value gets its own color.</p>
+          <div id="categorized-values-wrap" class="rule-list"></div>
+        </div>
+        <div id="graduated-style-panel" class="modal-subpanel" hidden>
+          <div class="field-grid">
+            <label class="field-stack">
+              <span class="field-label">Color ramp</span>
+              <select id="graduated-ramp" class="dark-input">
+                <option value="teal-blue">Teal to Blue</option>
+                <option value="gold-red">Gold to Red</option>
+                <option value="mint-purple">Mint to Purple</option>
+              </select>
+            </label>
+            <label class="field-stack">
+              <span class="field-label">Classification</span>
+              <select id="graduated-method" class="dark-input">
+                <option value="equal">Equal Interval</option>
+                <option value="quantile">Quantile</option>
+              </select>
+            </label>
+          </div>
+          <div class="field-grid">
+            <label class="field-stack">
+              <span class="field-label">Number of classes</span>
+              <select id="graduated-class-count" class="dark-input">
+                <option value="3">3</option>
+                <option value="4">4</option>
+                <option value="5" selected>5</option>
+                <option value="6">6</option>
+                <option value="7">7</option>
+              </select>
+            </label>
+          </div>
+          <div id="graduated-breaks-wrap" class="rule-list"></div>
+        </div>
+        <div class="modal-actions-row">
+          <button id="reset-symbology-btn" class="ghost-button" type="button">Reset</button>
+          <button id="apply-symbology-btn" class="ghost-button" type="button">Apply Symbology</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="filter-modal" class="modal-shell" hidden>
+      <div class="modal-backdrop" data-close-filter-modal="true"></div>
+      <div class="modal-card modal-card-wide" role="dialog" aria-modal="true" aria-labelledby="filter-modal-title">
+        <div class="panel-heading modal-heading">
+          <h2 id="filter-modal-title">Layer Filter</h2>
+          <button id="close-filter-modal-btn" class="ghost-button" type="button">
+            Close
+          </button>
+        </div>
+        <p id="filter-layer-label" class="small-note">
+          Build rules to control which features remain visible.
+        </p>
+        <div class="field-grid">
+          <label class="field-stack">
+            <span class="field-label">Match rules with</span>
+            <select id="filter-logic" class="dark-input">
+              <option value="and">AND</option>
+              <option value="or">OR</option>
+            </select>
+          </label>
+        </div>
+        <div id="filter-rules-wrap" class="rule-list"></div>
+        <div class="modal-actions-row">
+          <button id="add-filter-rule-btn" class="ghost-button" type="button">Add Rule</button>
+          <button id="clear-filter-btn" class="ghost-button" type="button">Clear Filter</button>
+          <button id="apply-filter-btn" class="ghost-button" type="button">Apply Filter</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="help-modal" class="modal-shell" hidden>
+      <div class="modal-backdrop" data-close-help-modal="true"></div>
+      <div class="modal-card modal-card-small" role="dialog" aria-modal="true" aria-labelledby="help-modal-title">
+        <div class="panel-heading modal-heading">
+          <h2 id="help-modal-title">Instructions</h2>
+          <button id="close-help-modal-btn" class="ghost-button" type="button">
+            Close
+          </button>
+        </div>
+        <div class="help-content">
+          <section class="help-section">
+            <h3>Layer Tools</h3>
+            <p id="active-edit-layer-name" class="small-note">
+              Set a layer into edit mode from the Layers panel to start editing.
+            </p>
+            <p class="small-note">
+              Use the <strong>+</strong> button in Layers to browse files or create a new named layer, and the <strong>+</strong> button in the attribute table to add a field.
+            </p>
+          </section>
+          <section class="help-section">
+            <h3>Draw & Edit</h3>
+            <p class="small-note">
+              Use the draw controls on the map to add points, lines, or polygons into the editable layer. Export is available from each layer in the Layers panel.
+            </p>
+          </section>
+          <section class="help-section">
+            <h3>Tips</h3>
+            <ul>
+              <li>Upload several files to compare them side by side.</li>
+              <li>Set one layer as editable before drawing or moving vertices.</li>
+              <li>Use the Leaflet edit tool to move nodes on lines and polygons.</li>
+              <li>Edit attributes directly in the table for the active edit layer.</li>
+              <li>CSV files should include latitude and longitude columns.</li>
+            </ul>
+          </section>
+        </div>
+      </div>
+    </div>
+
+    <div id="global-drop-overlay" class="global-drop-overlay" hidden>
+      <div class="drop-overlay-card">
+        <strong>Drop files anywhere to import</strong>
+        <span>Supported: GeoJSON, KML, GPX, zipped shapefiles, CSV</span>
+      </div>
+    </div>
+
+    <script
+      src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+      integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+      crossorigin=""
+    ></script>
+    <script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
+    <script src="https://unpkg.com/@tmcw/togeojson@6.0.1/dist/togeojson.umd.js"></script>
+    <script src="https://unpkg.com/shpjs@6.1.0/dist/shp.js"></script>
+    <script src="https://unpkg.com/shp-write@0.3.2/shpwrite.js"></script>
+    <script src="https://unpkg.com/mathjs@13.0.3/lib/browser/math.js"></script>
+    <script src="https://unpkg.com/tokml@0.4.0/tokml.js"></script>
+    <script src="./app.js"></script>
+  </body>
+</html>
