@@ -65,14 +65,19 @@ const calculatorFunctionList = document.getElementById("calculator-function-list
 const calculatorExpression = document.getElementById("calculator-expression");
 const calculatorPreviewText = document.getElementById("calculator-preview-text");
 const calculatorError = document.getElementById("calculator-error");
+const calculatorTargetWrap = document.getElementById("calculator-target-wrap");
 const calculatorNewFieldName = document.getElementById("calculator-new-field-name");
+const calculatorNewFieldStack = document.getElementById("calculator-new-field-stack");
 const calculatorExistingField = document.getElementById("calculator-existing-field");
 const calculatorExistingFieldStack = document.getElementById("calculator-existing-field-stack");
 const calculatorPreviewBtn = document.getElementById("calculator-preview-btn");
 const calculatorApplyBtn = document.getElementById("calculator-apply-btn");
 const calculatorModeInputs = document.querySelectorAll('input[name="calculator-mode"]');
 const tableResizer = document.getElementById("table-resizer");
+const toggleAttributeTableBtn = document.getElementById("toggle-attribute-table-btn");
 const globalDropOverlay = document.getElementById("global-drop-overlay");
+const workspacePanel = document.querySelector(".workspace-panel");
+const tablePanel = document.querySelector(".table-panel");
 const symbologyModal = document.getElementById("symbology-modal");
 const closeSymbologyModalBtn = document.getElementById("close-symbology-modal-btn");
 const symbologyLayerLabel = document.getElementById("symbology-layer-label");
@@ -89,6 +94,17 @@ const graduatedClassCountSelect = document.getElementById("graduated-class-count
 const graduatedBreaksWrap = document.getElementById("graduated-breaks-wrap");
 const applySymbologyBtn = document.getElementById("apply-symbology-btn");
 const resetSymbologyBtn = document.getElementById("reset-symbology-btn");
+const interpolationModal = document.getElementById("interpolation-modal");
+const closeInterpolationModalBtn = document.getElementById("close-interpolation-modal-btn");
+const interpolationLayerLabel = document.getElementById("interpolation-layer-label");
+const interpolationFieldSelect = document.getElementById("interpolation-field");
+const interpolationRadiusInput = document.getElementById("interpolation-radius");
+const interpolationCellSizeInput = document.getElementById("interpolation-cell-size");
+const interpolationPowerInput = document.getElementById("interpolation-power");
+const interpolationOpacityInput = document.getElementById("interpolation-opacity");
+const interpolationSummary = document.getElementById("interpolation-summary");
+const applyInterpolationBtn = document.getElementById("apply-interpolation-btn");
+const clearInterpolationBtn = document.getElementById("clear-interpolation-btn");
 const filterModal = document.getElementById("filter-modal");
 const closeFilterModalBtn = document.getElementById("close-filter-modal-btn");
 const filterLayerLabel = document.getElementById("filter-layer-label");
@@ -101,6 +117,7 @@ const openHelpModalBtn = document.getElementById("open-help-modal-btn");
 const helpModal = document.getElementById("help-modal");
 const closeHelpModalBtn = document.getElementById("close-help-modal-btn");
 const themeCycleBtn = document.getElementById("theme-cycle-btn");
+const brandLogoShell = document.getElementById("brand-logo-shell");
 
 const loadedLayers = [];
 let layerCount = 0;
@@ -110,10 +127,17 @@ let exportTargetLayerId = "";
 let dragDepth = 0;
 let isResizingTable = false;
 let activeSymbologyLayerId = "";
+let activeInterpolationLayerId = "";
 let activeFilterLayerId = "";
+let isDropOverlayVisible = false;
+let isAttributeTableVisible = true;
+
+const animatedLayerIds = new Set();
+let pendingEditToggleAnimations = [];
 
 const THEME_STORAGE_KEY = "geodataviewer-theme-preference";
 const systemThemeMedia = window.matchMedia("(prefers-color-scheme: dark)");
+const canAnimate = typeof anime === "function";
 
 const colorRamps = {
   "teal-blue": ["#1db7a6", "#43c2ff"],
@@ -241,6 +265,16 @@ function createDefaultFilterConfig() {
   };
 }
 
+function createDefaultInterpolationConfig() {
+  return {
+    field: "",
+    radiusMeters: 2000,
+    cellSizeMeters: 250,
+    power: 2,
+    opacity: 0.65,
+  };
+}
+
 function getStoredThemePreference() {
   const storedPreference = localStorage.getItem(THEME_STORAGE_KEY);
   if (storedPreference === "dark" || storedPreference === "light" || storedPreference === "system") {
@@ -291,6 +325,353 @@ function getNextThemePreference(currentTheme) {
   }
 
   return "dark";
+}
+
+function animateLayerEntries(elements) {
+  if (!elements.length) {
+    return;
+  }
+
+  if (!canAnimate) {
+    elements.forEach((element) => {
+      element.style.opacity = "1";
+      element.style.transform = "none";
+    });
+    return;
+  }
+
+  anime.remove(elements);
+  anime({
+    targets: elements,
+    opacity: [0, 1],
+    translateY: [18, 0],
+    scale: [0.97, 1],
+    delay: anime.stagger(70),
+    duration: 520,
+    easing: "easeOutExpo",
+  });
+}
+
+function queueEditToggleAnimation(layerId, mode) {
+  if (!layerId || !mode) {
+    return;
+  }
+
+  pendingEditToggleAnimations = pendingEditToggleAnimations.filter((item) => item.layerId !== layerId);
+  pendingEditToggleAnimations.push({ layerId, mode });
+}
+
+function runPendingEditToggleAnimations() {
+  if (!pendingEditToggleAnimations.length) {
+    return;
+  }
+
+  const animations = [...pendingEditToggleAnimations];
+  pendingEditToggleAnimations = [];
+
+  animations.forEach(({ layerId, mode }) => {
+    const button = layerList.querySelector(`[data-edit-toggle-id="${layerId}"]`);
+    const dot = button?.querySelector(".edit-mode-dot");
+    if (!button || !dot || !canAnimate) {
+      return;
+    }
+
+    anime.remove([button, dot]);
+
+    if (mode === "on") {
+      anime({
+        targets: button,
+        scale: [1, 1.16, 1.04],
+        duration: 420,
+        easing: "easeOutBack",
+      });
+      anime({
+        targets: dot,
+        scale: [1, 1.38, 1],
+        duration: 440,
+        easing: "easeOutExpo",
+      });
+      return;
+    }
+
+    anime({
+      targets: button,
+      scale: [1.04, 0.94, 1],
+      duration: 300,
+      easing: "easeOutCubic",
+    });
+    anime({
+      targets: dot,
+      scale: [1, 0.72, 1],
+      duration: 300,
+      easing: "easeOutCubic",
+    });
+  });
+}
+
+const INLINE_BRAND_LOGO = `
+  <svg width="600" height="150" viewBox="0 0 600 150" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Spatial D.E.C.M logo">
+    <text
+      x="50%"
+      y="50%"
+      font-family="'Orbitron', sans-serif"
+      font-size="60"
+      font-weight="700"
+      text-anchor="middle"
+      dominant-baseline="middle"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="1.7"
+      letter-spacing="5"
+    >
+      Spatial-D.E.C.M
+    </text>
+  </svg>
+`;
+
+function animateBrandLogo(shell) {
+  if (!shell) {
+    return;
+  }
+
+  const svg = shell.querySelector("svg");
+  const baseText = svg?.querySelector(".logo-base");
+  const overlayText = svg?.querySelector(".logo-overlay");
+  if (!svg || !baseText || !overlayText) {
+    return;
+  }
+
+  const totalLength =
+    typeof overlayText.getComputedTextLength === "function" ? overlayText.getComputedTextLength() : 900;
+  baseText.style.strokeDasharray = "none";
+  baseText.style.strokeDashoffset = "0";
+  overlayText.style.strokeDasharray = `${totalLength}`;
+  overlayText.style.strokeDashoffset = `${totalLength}`;
+  overlayText.style.opacity = "1";
+
+  if (!canAnimate) {
+    overlayText.style.strokeDashoffset = "0";
+    return;
+  }
+
+  anime.remove([overlayText, shell]);
+  anime.set(shell, {
+    opacity: 1,
+    scale: 1,
+  });
+  anime({
+    targets: overlayText,
+    strokeDashoffset: [totalLength, 0],
+    duration: 2200,
+    easing: "easeInOutSine",
+    loop: true,
+    loopDelay: 220,
+  });
+  anime({
+    targets: overlayText,
+    strokeOpacity: [0.35, 1],
+    duration: 2200,
+    easing: "easeInOutSine",
+    loop: true,
+    loopDelay: 220,
+  });
+  anime({
+    targets: shell,
+    scale: [1, 1.006, 1],
+    duration: 3200,
+    easing: "easeInOutSine",
+    loop: true,
+  });
+}
+
+async function initializeBrandLogo() {
+  if (!brandLogoShell) {
+    return;
+  }
+
+  let svgMarkup = INLINE_BRAND_LOGO;
+  try {
+    const response = await fetch("./Logo.svg");
+    if (response.ok) {
+      svgMarkup = await response.text();
+    }
+  } catch (error) {
+    svgMarkup = INLINE_BRAND_LOGO;
+  }
+
+  brandLogoShell.innerHTML = svgMarkup;
+  const svg = brandLogoShell.querySelector("svg");
+  const logoText = svg?.querySelector("text");
+  if (svg && logoText) {
+    logoText.setAttribute("fill", "none");
+    logoText.setAttribute("stroke", "currentColor");
+    logoText.setAttribute("stroke-width", "1.7");
+    logoText.classList.add("logo-base");
+
+    const overlayText = logoText.cloneNode(true);
+    overlayText.classList.remove("logo-base");
+    overlayText.classList.add("logo-overlay");
+    overlayText.setAttribute("stroke-width", "1.95");
+    svg.appendChild(overlayText);
+  }
+  animateBrandLogo(brandLogoShell);
+}
+
+function showModal(modal) {
+  if (!modal || !modal.hidden && modal.dataset.open === "true") {
+    return;
+  }
+
+  const backdrop = modal.querySelector(".modal-backdrop");
+  const card = modal.querySelector(".modal-card");
+  modal.hidden = false;
+  modal.dataset.open = "true";
+
+  if (!canAnimate || !backdrop || !card) {
+    if (backdrop) {
+      backdrop.style.opacity = "1";
+    }
+    if (card) {
+      card.style.opacity = "1";
+      card.style.transform = "none";
+    }
+    return;
+  }
+
+  anime.remove([backdrop, card]);
+  anime.set(backdrop, { opacity: 0 });
+  anime.set(card, { opacity: 0, translateY: 20, scale: 0.97 });
+  anime
+    .timeline({ easing: "easeOutCubic", duration: 240 })
+    .add({
+      targets: backdrop,
+      opacity: [0, 1],
+      duration: 200,
+    })
+    .add(
+      {
+        targets: card,
+        opacity: [0, 1],
+        translateY: [20, 0],
+        scale: [0.97, 1],
+        duration: 320,
+        easing: "easeOutExpo",
+      },
+      40
+    );
+}
+
+function hideModal(modal, onComplete) {
+  if (!modal || modal.hidden || modal.dataset.closing === "true") {
+    if (typeof onComplete === "function") {
+      onComplete();
+    }
+    return;
+  }
+
+  const finalize = () => {
+    modal.hidden = true;
+    modal.dataset.open = "false";
+    modal.dataset.closing = "false";
+    if (typeof onComplete === "function") {
+      onComplete();
+    }
+  };
+
+  const backdrop = modal.querySelector(".modal-backdrop");
+  const card = modal.querySelector(".modal-card");
+
+  if (!canAnimate || !backdrop || !card) {
+    finalize();
+    return;
+  }
+
+  modal.dataset.closing = "true";
+  anime.remove([backdrop, card]);
+  anime
+    .timeline({
+      easing: "easeInCubic",
+      duration: 180,
+      complete: finalize,
+    })
+    .add({
+      targets: card,
+      opacity: [1, 0],
+      translateY: [0, 16],
+      scale: [1, 0.98],
+    })
+    .add(
+      {
+        targets: backdrop,
+        opacity: [1, 0],
+        duration: 160,
+      },
+      0
+    );
+}
+
+function updateGlobalDropOverlay(visible) {
+  if (visible === isDropOverlayVisible) {
+    return;
+  }
+
+  isDropOverlayVisible = visible;
+  const overlay = globalDropOverlay;
+  const card = overlay.querySelector(".drop-overlay-card");
+
+  if (!visible) {
+    if (!canAnimate || overlay.hidden) {
+      overlay.hidden = true;
+      return;
+    }
+
+    anime.remove([overlay, card]);
+    anime({
+      targets: overlay,
+      opacity: [1, 0],
+      duration: 160,
+      easing: "easeInQuad",
+    });
+    anime({
+      targets: card,
+      opacity: [1, 0],
+      scale: [1, 0.94],
+      duration: 180,
+      easing: "easeInCubic",
+      complete: () => {
+        overlay.hidden = true;
+      },
+    });
+    return;
+  }
+
+  overlay.hidden = false;
+
+  if (!canAnimate || !card) {
+    overlay.style.opacity = "1";
+    if (card) {
+      card.style.opacity = "1";
+      card.style.transform = "none";
+    }
+    return;
+  }
+
+  anime.remove([overlay, card]);
+  anime.set(overlay, { opacity: 0 });
+  anime.set(card, { opacity: 0, scale: 0.94 });
+  anime({
+    targets: overlay,
+    opacity: [0, 1],
+    duration: 180,
+    easing: "easeOutQuad",
+  });
+  anime({
+    targets: card,
+    opacity: [0, 1],
+    scale: [0.94, 1],
+    duration: 360,
+    easing: "easeOutExpo",
+  });
 }
 
 function updateStatus(message, isError = false) {
@@ -965,6 +1346,229 @@ function getFeatureColor(layerRecord, feature) {
   return styleConfig.singleColor || layerRecord?.color || "#1db7a6";
 }
 
+function clearInterpolationOverlay(layerRecord) {
+  if (!layerRecord?.interpolationOverlay) {
+    return;
+  }
+
+  map.removeLayer(layerRecord.interpolationOverlay);
+  layerRecord.interpolationOverlay = null;
+
+  if (layerRecord.interpolationObjectUrl) {
+    URL.revokeObjectURL(layerRecord.interpolationObjectUrl);
+    layerRecord.interpolationObjectUrl = "";
+  }
+}
+
+function samplePointGeometryCoordinates(feature) {
+  if (!feature?.geometry) {
+    return [];
+  }
+
+  if (feature.geometry.type === "Point") {
+    return [feature.geometry.coordinates];
+  }
+
+  if (feature.geometry.type === "MultiPoint") {
+    return feature.geometry.coordinates || [];
+  }
+
+  return [];
+}
+
+function getInterpolationPointFeatures(layerRecord) {
+  if (!layerRecord) {
+    return [];
+  }
+
+  return getFilteredFeatures(layerRecord).filter((feature) => {
+    const geometryType = feature?.geometry?.type;
+    return geometryType === "Point" || geometryType === "MultiPoint";
+  });
+}
+
+function getInterpolationNumericFields(layerRecord) {
+  return getLayerFieldNames(layerRecord).filter((field) => {
+    const values = getInterpolationPointFeatures(layerRecord)
+      .map((feature) => Number(feature?.properties?.[field]))
+      .filter((value) => Number.isFinite(value));
+    return values.length > 0;
+  });
+}
+
+function isInterpolationEligible(layerRecord) {
+  return getInterpolationPointFeatures(layerRecord).length > 1 && getInterpolationNumericFields(layerRecord).length > 0;
+}
+
+function getInterpolationSamples(layerRecord, field) {
+  return getInterpolationPointFeatures(layerRecord)
+    .flatMap((feature) => {
+      const numericValue = Number(feature?.properties?.[field]);
+      if (!Number.isFinite(numericValue)) {
+        return [];
+      }
+
+      return samplePointGeometryCoordinates(feature).map((coordinates) => ({
+        lon: coordinates[0],
+        lat: coordinates[1],
+        value: numericValue,
+      }));
+    })
+    .filter((sample) => Number.isFinite(sample.lon) && Number.isFinite(sample.lat));
+}
+
+function getInterpolationColor(value, minValue, maxValue) {
+  const denominator = maxValue - minValue || 1;
+  const ratio = Math.min(Math.max((value - minValue) / denominator, 0), 1);
+
+  if (ratio < 0.33) {
+    return interpolateColor("#1a5fff", "#1db7a6", ratio / 0.33);
+  }
+  if (ratio < 0.66) {
+    return interpolateColor("#1db7a6", "#ffcc66", (ratio - 0.33) / 0.33);
+  }
+
+  return interpolateColor("#ffcc66", "#ff6b6b", (ratio - 0.66) / 0.34);
+}
+
+function hexToRgba(color, alpha = 1) {
+  const [red, green, blue] = parseHexColor(color);
+  return [red, green, blue, Math.round(alpha * 255)];
+}
+
+function dataURLToBlob(dataUrl) {
+  const [header, data] = dataUrl.split(",");
+  const mimeMatch = header.match(/data:(.*?);base64/);
+  const mimeType = mimeMatch?.[1] || "image/png";
+  const binary = atob(data);
+  const bytes = new Uint8Array(binary.length);
+
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+
+  return new Blob([bytes], { type: mimeType });
+}
+
+function createInterpolationOverlay(layerRecord, config) {
+  const samples = getInterpolationSamples(layerRecord, config.field);
+  if (samples.length < 2) {
+    throw new Error("Interpolation needs at least two point samples with numeric values.");
+  }
+
+  const samplePoints = samples.map((sample) => {
+    const projected = map.options.crs.project(L.latLng(sample.lat, sample.lon));
+    return {
+      x: projected.x,
+      y: projected.y,
+      value: sample.value,
+    };
+  });
+
+  const radius = Math.max(Number(config.radiusMeters) || 0, 50);
+  let cellSize = Math.max(Number(config.cellSizeMeters) || 0, 25);
+  const power = Math.max(Number(config.power) || 2, 0.5);
+  const opacity = Math.min(Math.max(Number(config.opacity) || 0.65, 0.1), 1);
+
+  const xValues = samplePoints.map((sample) => sample.x);
+  const yValues = samplePoints.map((sample) => sample.y);
+  const minX = Math.min(...xValues) - radius;
+  const maxX = Math.max(...xValues) + radius;
+  const minY = Math.min(...yValues) - radius;
+  const maxY = Math.max(...yValues) + radius;
+
+  const maxGridDimension = 220;
+  const projectedWidth = Math.max(maxX - minX, cellSize);
+  const projectedHeight = Math.max(maxY - minY, cellSize);
+  const widthRatio = Math.ceil(projectedWidth / cellSize) / maxGridDimension;
+  const heightRatio = Math.ceil(projectedHeight / cellSize) / maxGridDimension;
+  if (widthRatio > 1 || heightRatio > 1) {
+    cellSize *= Math.max(widthRatio, heightRatio);
+  }
+
+  const width = Math.max(2, Math.ceil(projectedWidth / cellSize));
+  const height = Math.max(2, Math.ceil(projectedHeight / cellSize));
+  const values = [];
+  let minValue = Infinity;
+  let maxValue = -Infinity;
+
+  for (let row = 0; row < height; row += 1) {
+    const projectedY = maxY - row * cellSize;
+
+    for (let column = 0; column < width; column += 1) {
+      const projectedX = minX + column * cellSize;
+      let weightedSum = 0;
+      let weightTotal = 0;
+      let coincidentValue = null;
+
+      samplePoints.forEach((sample) => {
+        const distance = Math.hypot(sample.x - projectedX, sample.y - projectedY);
+        if (distance === 0) {
+          coincidentValue = sample.value;
+          return;
+        }
+        if (distance > radius) {
+          return;
+        }
+
+        const weight = 1 / (distance ** power);
+        weightedSum += sample.value * weight;
+        weightTotal += weight;
+      });
+
+      const value = coincidentValue ?? (weightTotal ? weightedSum / weightTotal : null);
+      values.push(value);
+
+      if (Number.isFinite(value)) {
+        minValue = Math.min(minValue, value);
+        maxValue = Math.max(maxValue, value);
+      }
+    }
+  }
+
+  if (!Number.isFinite(minValue) || !Number.isFinite(maxValue)) {
+    throw new Error("Interpolation could not create any cells within the influence radius.");
+  }
+
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext("2d");
+  const imageData = context.createImageData(width, height);
+
+  values.forEach((value, index) => {
+    const pixelIndex = index * 4;
+    if (!Number.isFinite(value)) {
+      imageData.data[pixelIndex + 3] = 0;
+      return;
+    }
+
+    const rgba = hexToRgba(getInterpolationColor(value, minValue, maxValue), opacity);
+    imageData.data[pixelIndex] = rgba[0];
+    imageData.data[pixelIndex + 1] = rgba[1];
+    imageData.data[pixelIndex + 2] = rgba[2];
+    imageData.data[pixelIndex + 3] = rgba[3];
+  });
+
+  context.putImageData(imageData, 0, 0);
+
+  const southWest = map.options.crs.unproject(L.point(minX, minY));
+  const northEast = map.options.crs.unproject(L.point(maxX, maxY));
+  const bounds = L.latLngBounds([southWest.lat, southWest.lng], [northEast.lat, northEast.lng]);
+  const objectUrl = URL.createObjectURL(dataURLToBlob(canvas.toDataURL("image/png")));
+  const overlay = L.imageOverlay(objectUrl, bounds, {
+    opacity,
+    interactive: false,
+    pane: "overlayPane",
+  });
+
+  return {
+    overlay,
+    objectUrl,
+    summary: `${samples.length} points interpolated across ${width} × ${height} cells.`,
+  };
+}
+
 function createFeatureStyle(layerRecord, feature) {
   return defaultStyle(getFeatureColor(layerRecord, feature));
 }
@@ -1026,6 +1630,9 @@ function getMapLayerByFeatureId(layerRecord, featureId) {
 
 function rebuildLayerFromData(layerRecord) {
   map.removeLayer(layerRecord.layerGroup);
+  if (layerRecord.interpolationOverlay) {
+    map.removeLayer(layerRecord.interpolationOverlay);
+  }
 
   layerRecord.layerGroup = L.featureGroup();
 
@@ -1045,6 +1652,9 @@ function rebuildLayerFromData(layerRecord) {
   });
 
   if (layerRecord.isVisible !== false) {
+    if (layerRecord.interpolationOverlay) {
+      layerRecord.interpolationOverlay.addTo(map);
+    }
     layerRecord.layerGroup.addTo(map);
   }
 
@@ -1072,7 +1682,10 @@ function createLayerRecord(geojson, fileName, sourceType) {
     geojson: normalizedGeojson,
     fields: collectFieldNamesFromGeoJSON(normalizedGeojson),
     styleConfig: createDefaultStyleConfig(color),
+    interpolationConfig: createDefaultInterpolationConfig(),
     filterConfig: createDefaultFilterConfig(),
+    interpolationOverlay: null,
+    interpolationObjectUrl: "",
     layerGroup: L.featureGroup(),
     featureCount: 0,
     visibleFeatureCount: 0,
@@ -1301,6 +1914,7 @@ function removeLayer(id) {
     return;
   }
 
+  clearInterpolationOverlay(loadedLayers[index]);
   map.removeLayer(loadedLayers[index].layerGroup);
   loadedLayers.splice(index, 1);
 
@@ -1337,8 +1951,14 @@ function toggleLayer(id, visible) {
   layerRecord.isVisible = visible;
 
   if (visible) {
+    if (layerRecord.interpolationOverlay) {
+      layerRecord.interpolationOverlay.addTo(map);
+    }
     layerRecord.layerGroup.addTo(map);
   } else {
+    if (layerRecord.interpolationOverlay) {
+      map.removeLayer(layerRecord.interpolationOverlay);
+    }
     map.removeLayer(layerRecord.layerGroup);
     if (activeEditableLayerId === id) {
       activeEditableLayerId = "";
@@ -1355,13 +1975,17 @@ function toggleLayer(id, visible) {
 function renderLayerList() {
   setEmptyState();
   layerList.innerHTML = "";
+  const nextAnimatedLayerIds = new Set();
+  const newlyAddedCards = [];
 
   loadedLayers.forEach((layerRecord) => {
     const wrapper = document.createElement("article");
     wrapper.className = "layer-card";
+    wrapper.dataset.layerId = layerRecord.id;
 
     const isVisible = layerRecord.isVisible !== false;
     const isEditable = layerRecord.id === activeEditableLayerId;
+    const canInterpolate = isInterpolationEligible(layerRecord);
 
     wrapper.innerHTML = `
       <div class="layer-card-header">
@@ -1371,7 +1995,7 @@ function renderLayerList() {
           <div class="layer-meta">${layerRecord.visibleFeatureCount === layerRecord.featureCount ? "All features visible" : `${layerRecord.visibleFeatureCount} visible after filter`}</div>
           <div class="layer-meta">${isEditable ? "Edit mode active" : "View only"}</div>
         </div>
-        <button class="edit-mode-toggle ${isEditable ? "active" : ""}" type="button" aria-pressed="${isEditable ? "true" : "false"}" title="${isEditable ? "Editing enabled" : "Enable editing"}">
+        <button class="edit-mode-toggle ${isEditable ? "active" : ""}" data-edit-toggle-id="${layerRecord.id}" type="button" aria-pressed="${isEditable ? "true" : "false"}" title="${isEditable ? "Editing enabled" : "Enable editing"}">
           <span class="edit-mode-dot"></span>
         </button>
       </div>
@@ -1383,6 +2007,7 @@ function renderLayerList() {
         <div class="layer-actions">
           <button class="layer-action zoom" type="button">Zoom</button>
           <button class="layer-action style accent-action" type="button">Style</button>
+          ${canInterpolate ? '<button class="layer-action interpolation accent-action" type="button">Interpolate</button>' : ""}
           <button class="layer-action filter accent-action" type="button">Filter</button>
           <button class="layer-action export" type="button">Export</button>
           <button class="layer-action remove" type="button">Remove</button>
@@ -1395,6 +2020,7 @@ function renderLayerList() {
     const editButton = wrapper.querySelector(".edit-mode-toggle");
     const zoomButton = wrapper.querySelector(".zoom");
     const styleButton = wrapper.querySelector(".style");
+    const interpolationButton = wrapper.querySelector(".interpolation");
     const filterButton = wrapper.querySelector(".filter");
     const exportButton = wrapper.querySelector(".export");
     const removeButton = wrapper.querySelector(".remove");
@@ -1408,12 +2034,22 @@ function renderLayerList() {
     );
     zoomButton.addEventListener("click", () => zoomToLayer(layerRecord.id));
     styleButton.addEventListener("click", () => openSymbologyModal(layerRecord.id));
+    interpolationButton?.addEventListener("click", () => openInterpolationModal(layerRecord.id));
     filterButton.addEventListener("click", () => openFilterModal(layerRecord.id));
     exportButton.addEventListener("click", () => openExportModal(layerRecord.id));
     removeButton.addEventListener("click", () => removeLayer(layerRecord.id));
 
     layerList.appendChild(wrapper);
+    nextAnimatedLayerIds.add(layerRecord.id);
+    if (!animatedLayerIds.has(layerRecord.id)) {
+      newlyAddedCards.push(wrapper);
+    }
   });
+
+  animatedLayerIds.clear();
+  nextAnimatedLayerIds.forEach((id) => animatedLayerIds.add(id));
+  animateLayerEntries(newlyAddedCards);
+  runPendingEditToggleAnimations();
 }
 
 function getLayerFieldNames(layerRecord) {
@@ -1570,12 +2206,13 @@ function openSymbologyModal(layerId) {
   graduatedMethodSelect.value = layerRecord.styleConfig.graduated.method;
   graduatedClassCountSelect.value = String(layerRecord.styleConfig.graduated.classCount);
   renderSymbologyPanels(layerRecord);
-  symbologyModal.hidden = false;
+  showModal(symbologyModal);
 }
 
 function closeSymbologyModal() {
-  symbologyModal.hidden = true;
-  activeSymbologyLayerId = "";
+  hideModal(symbologyModal, () => {
+    activeSymbologyLayerId = "";
+  });
 }
 
 function updateSymbologyFromControls() {
@@ -1611,6 +2248,87 @@ function resetSymbology() {
   renderSymbologyPanels(layerRecord);
   rebuildLayerFromData(layerRecord);
   updateStatus(`Symbology reset for ${layerRecord.name}.`);
+}
+
+function openInterpolationModal(layerId) {
+  const layerRecord = getLayerRecordById(layerId);
+  if (!layerRecord || !isInterpolationEligible(layerRecord)) {
+    updateStatus("Interpolation is available only for point layers with numeric attribute values.", true);
+    return;
+  }
+
+  activeInterpolationLayerId = layerId;
+  const numericFields = getInterpolationNumericFields(layerRecord);
+  const currentField = numericFields.includes(layerRecord.interpolationConfig.field)
+    ? layerRecord.interpolationConfig.field
+    : numericFields[0];
+
+  layerRecord.interpolationConfig.field = currentField || "";
+  interpolationLayerLabel.textContent = `Interpolate ${layerRecord.name} using a numeric point field and influence radius.`;
+  interpolationFieldSelect.innerHTML = numericFields
+    .map((field) => `<option value="${escapeHtml(field)}">${escapeHtml(field)}</option>`)
+    .join("");
+  interpolationFieldSelect.value = currentField || "";
+  interpolationRadiusInput.value = String(layerRecord.interpolationConfig.radiusMeters);
+  interpolationCellSizeInput.value = String(layerRecord.interpolationConfig.cellSizeMeters);
+  interpolationPowerInput.value = String(layerRecord.interpolationConfig.power);
+  interpolationOpacityInput.value = String(layerRecord.interpolationConfig.opacity);
+  interpolationSummary.textContent = `${getInterpolationPointFeatures(layerRecord).length} eligible point features are available.`;
+  showModal(interpolationModal);
+}
+
+function closeInterpolationModal() {
+  hideModal(interpolationModal, () => {
+    activeInterpolationLayerId = "";
+  });
+}
+
+function applyInterpolationToLayer() {
+  const layerRecord = getLayerRecordById(activeInterpolationLayerId);
+  if (!layerRecord) {
+    return;
+  }
+
+  const config = {
+    field: interpolationFieldSelect.value,
+    radiusMeters: Number(interpolationRadiusInput.value),
+    cellSizeMeters: Number(interpolationCellSizeInput.value),
+    power: Number(interpolationPowerInput.value),
+    opacity: Number(interpolationOpacityInput.value),
+  };
+
+  if (!config.field) {
+    updateStatus("Choose a numeric field for interpolation.", true);
+    return;
+  }
+
+  try {
+    clearInterpolationOverlay(layerRecord);
+    const result = createInterpolationOverlay(layerRecord, config);
+    layerRecord.interpolationConfig = { ...config };
+    layerRecord.interpolationOverlay = result.overlay;
+    layerRecord.interpolationObjectUrl = result.objectUrl;
+    if (layerRecord.isVisible !== false) {
+      layerRecord.interpolationOverlay.addTo(map);
+    }
+    interpolationSummary.textContent = result.summary;
+    updateStatus(`Interpolation surface updated for ${layerRecord.name}.`);
+    closeInterpolationModal();
+  } catch (error) {
+    interpolationSummary.textContent = error.message;
+    updateStatus(error.message, true);
+  }
+}
+
+function clearInterpolationForLayer() {
+  const layerRecord = getLayerRecordById(activeInterpolationLayerId);
+  if (!layerRecord) {
+    return;
+  }
+
+  clearInterpolationOverlay(layerRecord);
+  interpolationSummary.textContent = "Interpolation surface cleared.";
+  updateStatus(`Interpolation surface cleared for ${layerRecord.name}.`);
 }
 
 function createFilterRuleMarkup(layerRecord, rule, index) {
@@ -1705,20 +2423,21 @@ function openFilterModal(layerId) {
   filterLayerLabel.textContent = `Build a query to control which features of ${layerRecord.name} remain visible.`;
   filterLogicSelect.value = layerRecord.filterConfig.logic;
   renderFilterRules(layerRecord);
-  filterModal.hidden = false;
+  showModal(filterModal);
 }
 
 function closeFilterModal() {
-  filterModal.hidden = true;
-  activeFilterLayerId = "";
+  hideModal(filterModal, () => {
+    activeFilterLayerId = "";
+  });
 }
 
 function openHelpModal() {
-  helpModal.hidden = false;
+  showModal(helpModal);
 }
 
 function closeHelpModal() {
-  helpModal.hidden = true;
+  hideModal(helpModal);
 }
 
 function applyFilterFromControls() {
@@ -1764,6 +2483,7 @@ function renderEditableLayerOptions() {
 
 function setActiveEditableLayer(layerId) {
   const previousActiveLayer = getActiveEditableLayer();
+  const previousActiveLayerId = previousActiveLayer?.id || "";
   if (previousActiveLayer && previousActiveLayer.isVisible !== false) {
     previousActiveLayer.layerGroup.addTo(map);
   }
@@ -1775,6 +2495,14 @@ function setActiveEditableLayer(layerId) {
   if (activeLayer && activeLayer.isVisible === false) {
     activeLayer.isVisible = true;
     activeLayer.layerGroup.addTo(map);
+  }
+
+  if (previousActiveLayerId && previousActiveLayerId !== layerId) {
+    queueEditToggleAnimation(previousActiveLayerId, "off");
+  }
+
+  if (layerId && previousActiveLayerId !== layerId) {
+    queueEditToggleAnimation(layerId, "on");
   }
 
   renderEditableLayerOptions();
@@ -1991,13 +2719,21 @@ function renderCalculatorFunctionList() {
 function renderCalculatorTargetControls() {
   const mode = getActiveCalculatorMode();
   const fields = getActiveLayerFieldNames();
+  const showCreate = mode === "create";
 
-  calculatorExistingFieldStack.hidden = mode !== "update";
-  calculatorNewFieldName.parentElement.hidden = mode !== "create";
+  calculatorNewFieldStack.hidden = !showCreate;
+  calculatorExistingFieldStack.hidden = showCreate;
+  calculatorTargetWrap.classList.toggle("single-target-mode", true);
 
   calculatorExistingField.innerHTML = fields.length
     ? fields.map((field) => `<option value="${escapeHtml(field)}">${escapeHtml(field)}</option>`).join("")
     : '<option value="">No fields available</option>';
+
+  if (showCreate) {
+    calculatorExistingField.value = "";
+  } else {
+    calculatorNewFieldName.blur();
+  }
 }
 
 function insertCalculatorText(text) {
@@ -2128,7 +2864,7 @@ function openCalculatorModal() {
     return;
   }
 
-  calculatorModal.hidden = false;
+  showModal(calculatorModal);
   renderCalculatorFieldList();
   renderCalculatorFunctionList();
   renderCalculatorTargetControls();
@@ -2136,7 +2872,7 @@ function openCalculatorModal() {
 }
 
 function closeCalculatorModal() {
-  calculatorModal.hidden = true;
+  hideModal(calculatorModal);
 }
 
 function applyCalculatorToLayer() {
@@ -2429,20 +3165,21 @@ function openExportModal(layerId) {
   exportLayerLabel.textContent = `Export ${layerRecord.name} without changing the original file.`;
   exportFileNameInput.value = layerRecord.name.replace(/\.[^.]+$/, "") || "edited-layer";
   exportFormatSelect.value = "geojson";
-  exportModal.hidden = false;
+  showModal(exportModal);
 }
 
 function closeExportModal() {
-  exportModal.hidden = true;
-  exportTargetLayerId = "";
+  hideModal(exportModal, () => {
+    exportTargetLayerId = "";
+  });
 }
 
 function openLayerModal() {
-  layerModal.hidden = false;
+  showModal(layerModal);
 }
 
 function closeLayerModal() {
-  layerModal.hidden = true;
+  hideModal(layerModal);
 }
 
 function openFieldModal() {
@@ -2451,15 +3188,32 @@ function openFieldModal() {
     return;
   }
 
-  fieldModal.hidden = false;
+  showModal(fieldModal);
 }
 
 function closeFieldModal() {
-  fieldModal.hidden = true;
+  hideModal(fieldModal);
 }
 
-function updateGlobalDropOverlay(visible) {
-  globalDropOverlay.hidden = !visible;
+function applyAttributeTableVisibility() {
+  workspacePanel?.classList.toggle("table-collapsed", !isAttributeTableVisible);
+  tablePanel?.classList.toggle("is-collapsed", !isAttributeTableVisible);
+
+  if (toggleAttributeTableBtn) {
+    const label = isAttributeTableVisible ? "Hide attribute table" : "Show attribute table";
+    toggleAttributeTableBtn.setAttribute("title", label);
+    toggleAttributeTableBtn.setAttribute("aria-label", label);
+    toggleAttributeTableBtn.setAttribute("aria-pressed", String(isAttributeTableVisible));
+  }
+
+  window.requestAnimationFrame(() => {
+    map.invalidateSize();
+  });
+}
+
+function toggleAttributeTableVisibility() {
+  isAttributeTableVisible = !isAttributeTableVisible;
+  applyAttributeTableVisibility();
 }
 
 function resizeTableDock(clientY) {
@@ -2528,6 +3282,7 @@ document.addEventListener("drop", (event) => {
 
 clearAllBtn.addEventListener("click", () => {
   loadedLayers.splice(0).forEach((layerRecord) => {
+    clearInterpolationOverlay(layerRecord);
     map.removeLayer(layerRecord.layerGroup);
   });
   activeEditableLayerId = "";
@@ -2560,6 +3315,7 @@ openFieldModalBtn.addEventListener("click", openFieldModal);
 closeFieldModalBtn.addEventListener("click", closeFieldModal);
 openCalculatorModalBtn.addEventListener("click", openCalculatorModal);
 closeCalculatorModalBtn.addEventListener("click", closeCalculatorModal);
+toggleAttributeTableBtn.addEventListener("click", toggleAttributeTableVisibility);
 calculatorFieldSearch.addEventListener("input", renderCalculatorFieldList);
 calculatorExpression.addEventListener("input", updateCalculatorPreview);
 calculatorPreviewBtn.addEventListener("click", updateCalculatorPreview);
@@ -2584,6 +3340,9 @@ singleStyleColorInput.addEventListener("input", updateSymbologyFromControls);
 graduatedRampSelect.addEventListener("change", updateSymbologyFromControls);
 graduatedMethodSelect.addEventListener("change", updateSymbologyFromControls);
 graduatedClassCountSelect.addEventListener("change", updateSymbologyFromControls);
+closeInterpolationModalBtn.addEventListener("click", closeInterpolationModal);
+applyInterpolationBtn.addEventListener("click", applyInterpolationToLayer);
+clearInterpolationBtn.addEventListener("click", clearInterpolationForLayer);
 
 closeFilterModalBtn.addEventListener("click", closeFilterModal);
 addFilterRuleBtn.addEventListener("click", () => {
@@ -2647,6 +3406,12 @@ symbologyModal.addEventListener("click", (event) => {
   }
 });
 
+interpolationModal.addEventListener("click", (event) => {
+  if (event.target.dataset.closeInterpolationModal === "true") {
+    closeInterpolationModal();
+  }
+});
+
 filterModal.addEventListener("click", (event) => {
   if (event.target.dataset.closeFilterModal === "true") {
     closeFilterModal();
@@ -2660,6 +3425,9 @@ helpModal.addEventListener("click", (event) => {
 });
 
 tableResizer.addEventListener("mousedown", () => {
+  if (!isAttributeTableVisible) {
+    return;
+  }
   isResizingTable = true;
   document.body.style.userSelect = "none";
 });
@@ -2724,3 +3492,5 @@ renderLayerList();
 renderEditableLayerOptions();
 renderAttributeTable();
 initializeTheme();
+initializeBrandLogo();
+applyAttributeTableVisibility();

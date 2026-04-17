@@ -36,9 +36,9 @@
         <div class="sidebar-scroll">
           <div class="brand-block">
             <div class="panel-heading brand-heading">
-              <div>
+              <div class="brand-copy">
                 <p class="eyebrow">Spatial Explorer</p>
-                <h1>Spatial DECM</h1>
+                <div id="brand-logo-shell" class="brand-logo-shell" aria-label="Spatial D.E.C.M"></div>
               </div>
               <button id="open-help-modal-btn" class="icon-button subtle" type="button" title="Open help">
                 i
@@ -75,6 +75,27 @@
             <span id="basemap-label">CartoDB Dark Matter</span>
             <span id="status-message">Ready for spatial uploads.</span>
           </div>
+          <button
+            id="toggle-attribute-table-btn"
+            class="ghost-button floating-table-btn table-toggle-button"
+            type="button"
+            title="Hide attribute table"
+            aria-label="Hide attribute table"
+            aria-pressed="true"
+          >
+            <span class="table-toggle-icon" aria-hidden="true">
+              <span class="table-grid">
+                <span></span>
+                <span></span>
+                <span></span>
+                <span></span>
+              </span>
+              <span class="table-eye">
+                <span class="table-eye-pupil"></span>
+              </span>
+              <span class="table-toggle-slash"></span>
+            </span>
+          </button>
           <button id="theme-cycle-btn" class="ghost-button floating-theme-btn" type="button">Dark</button>
           <div id="map"></div>
         </section>
@@ -219,7 +240,7 @@
             </label>
           </div>
           <div id="calculator-target-wrap" class="field-grid calculator-target-grid">
-            <label class="field-stack">
+            <label class="field-stack" id="calculator-new-field-stack">
               <span class="field-label">New field name</span>
               <input id="calculator-new-field-name" class="dark-input" type="text" placeholder="calc_result" />
             </label>
@@ -351,6 +372,48 @@
       </div>
     </div>
 
+    <div id="interpolation-modal" class="modal-shell" hidden>
+      <div class="modal-backdrop" data-close-interpolation-modal="true"></div>
+      <div class="modal-card modal-card-small" role="dialog" aria-modal="true" aria-labelledby="interpolation-modal-title">
+        <div class="panel-heading modal-heading">
+          <h2 id="interpolation-modal-title">Point Interpolation</h2>
+          <button id="close-interpolation-modal-btn" class="ghost-button" type="button">
+            Close
+          </button>
+        </div>
+        <p id="interpolation-layer-label" class="small-note">
+          Build an interpolated surface from numeric point attributes.
+        </p>
+        <div class="field-grid">
+          <label class="field-stack">
+            <span class="field-label">Value field</span>
+            <select id="interpolation-field" class="dark-input"></select>
+          </label>
+          <label class="field-stack">
+            <span class="field-label">Influence radius (meters)</span>
+            <input id="interpolation-radius" class="dark-input" type="number" min="50" step="50" value="2000" />
+          </label>
+          <label class="field-stack">
+            <span class="field-label">Cell size (meters)</span>
+            <input id="interpolation-cell-size" class="dark-input" type="number" min="25" step="25" value="250" />
+          </label>
+          <label class="field-stack">
+            <span class="field-label">Power</span>
+            <input id="interpolation-power" class="dark-input" type="number" min="1" max="5" step="0.5" value="2" />
+          </label>
+          <label class="field-stack">
+            <span class="field-label">Opacity</span>
+            <input id="interpolation-opacity" class="dark-input" type="number" min="0.1" max="1" step="0.05" value="0.65" />
+          </label>
+        </div>
+        <div id="interpolation-summary" class="small-note"></div>
+        <div class="modal-actions-row">
+          <button id="clear-interpolation-btn" class="ghost-button" type="button">Clear Surface</button>
+          <button id="apply-interpolation-btn" class="ghost-button" type="button">Apply Interpolation</button>
+        </div>
+      </div>
+    </div>
+
     <div id="filter-modal" class="modal-shell" hidden>
       <div class="modal-backdrop" data-close-filter-modal="true"></div>
       <div class="modal-card modal-card-wide" role="dialog" aria-modal="true" aria-labelledby="filter-modal-title">
@@ -438,6 +501,7 @@
     <script src="https://unpkg.com/shp-write@0.3.2/shpwrite.js"></script>
     <script src="https://unpkg.com/mathjs@13.0.3/lib/browser/math.js"></script>
     <script src="https://unpkg.com/tokml@0.4.0/tokml.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/animejs/3.2.2/anime.min.js"></script>
     <script src="./app.js"></script>
   </body>
 </html>

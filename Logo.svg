@@ -1,0 +1,22 @@
+<svg width="600" height="150" viewBox="0 0 600 150" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <style type="text/css">
+      @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@700&amp;display=swap');
+    </style>
+  </defs>
+
+  <text 
+    x="50%" 
+    y="50%" 
+    font-family="'Orbitron', sans-serif" 
+    font-size="60" 
+    font-weight="700"
+    text-anchor="middle" 
+    dominant-baseline="middle"
+    fill="none" 
+    stroke="black" 
+    stroke-width="1.2"
+    letter-spacing="5">
+    Spatial-D.E.C.M
+  </text>
+</svg>
