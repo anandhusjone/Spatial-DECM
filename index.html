@@ -30,6 +30,12 @@
       accept=".geojson,.json,.kml,.gpx,.zip,.csv"
       hidden
     />
+    <input
+      id="project-open-file"
+      type="file"
+      accept=".sdecm,application/json"
+      hidden
+    />
 
     <div class="app-shell">
       <aside class="sidebar">
@@ -46,6 +52,16 @@
             </div>
             <!-- <p class="intro">Explore. Create. Manipulate.</p> -->
           </div>
+
+          <section class="panel project-panel">
+            <div class="panel-heading">
+              <h2>Project</h2>
+            </div>
+            <div id="project-bar" class="project-bar">
+              <!-- rendered by renderProjectBar() in 40-project.js -->
+            </div>
+            <p id="project-compat-note" class="project-compat-note small-note" hidden></p>
+          </section>
 
           <section class="panel layers-panel">
             <div class="panel-heading">
@@ -75,6 +91,15 @@
             <span id="basemap-label">CartoDB Dark Matter</span>
             <span id="status-message">Ready for spatial uploads.</span>
           </div>
+          <div id="import-progress-card" class="import-progress-card" hidden>
+            <div class="import-progress-header">
+              <strong id="import-progress-title">Preparing import</strong>
+              <span id="import-progress-meta" class="small-note">Waiting for file...</span>
+            </div>
+            <div class="import-progress-bar" aria-hidden="true">
+              <span id="import-progress-fill" class="import-progress-fill"></span>
+            </div>
+          </div>
           <button
             id="toggle-attribute-table-btn"
             class="ghost-button floating-table-btn table-toggle-button"
@@ -97,6 +122,9 @@
             </span>
           </button>
           <button id="theme-cycle-btn" class="ghost-button floating-theme-btn" type="button">Dark</button>
+          <button id="basemap-switcher-btn" class="ghost-button floating-basemap-btn" type="button" title="Switch basemap" aria-label="Switch basemap">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
+          </button>
           <div id="map"></div>
         </section>
 
@@ -251,37 +279,76 @@
           </div>
         </div>
         <div class="calculator-layout">
-          <section class="calculator-column">
-            <div class="calculator-column-header">
-              <h3>Fields</h3>
-              <input id="calculator-field-search" class="dark-input" type="text" placeholder="Search fields" />
+          <aside class="calculator-sidebar">
+            <section class="calculator-panel calculator-fields-panel">
+              <div class="calculator-panel-header">
+                <h3>Fields</h3>
+                <input id="calculator-field-search" class="dark-input" type="text" placeholder="Search fields" />
+              </div>
+              <div id="calculator-field-list" class="calculator-list"></div>
+              <div class="calculator-panel-subsection">
+                <p class="calculator-section-label">Variables</p>
+                <div id="calculator-variable-list" class="calculator-list calculator-variable-list"></div>
+              </div>
+            </section>
+            <section class="calculator-panel calculator-functions-panel">
+              <div class="calculator-panel-header">
+                <h3>Functions</h3>
+                <input id="calculator-function-search" class="dark-input" type="text" placeholder="Search functions" />
+              </div>
+              <div id="calculator-function-list" class="calculator-list"></div>
+            </section>
+          </aside>
+          <section class="calculator-workspace">
+            <section class="calculator-panel calculator-editor-panel">
+              <div class="calculator-panel-header">
+                <h3>Expression</h3>
+                <p class="small-note calculator-subtitle">Build an expression, preview it on a feature, then apply it to the active layer.</p>
+              </div>
+              <textarea
+                id="calculator-expression"
+                class="calculator-expression"
+                placeholder='Example: [name] || " - " || [category]'
+              ></textarea>
+            </section>
+            <div class="field-grid calculator-utility-grid">
+              <label class="field-stack">
+                <span class="field-label">Preview feature</span>
+                <select id="calculator-preview-feature" class="dark-input"></select>
+              </label>
+              <label class="field-stack">
+                <span class="field-label">Saved expressions</span>
+                <select id="calculator-saved-expressions" class="dark-input"></select>
+              </label>
             </div>
-            <div id="calculator-field-list" class="calculator-list"></div>
-          </section>
-          <section class="calculator-column">
-            <div class="calculator-column-header">
-              <h3>Functions</h3>
+            <div class="calculator-actions calculator-actions-secondary">
+              <button id="calculator-save-expression-btn" class="ghost-button" type="button">
+                Save
+              </button>
+              <button id="calculator-load-expression-btn" class="ghost-button" type="button">
+                Load
+              </button>
+              <button id="calculator-delete-expression-btn" class="ghost-button" type="button">
+                Delete
+              </button>
+              <button id="calculator-export-expressions-btn" class="ghost-button" type="button">
+                Export
+              </button>
+              <button id="calculator-import-expressions-btn" class="ghost-button" type="button">
+                Import
+              </button>
+              <input id="calculator-import-file" type="file" accept="application/json,.json" hidden />
             </div>
-            <div id="calculator-function-list" class="calculator-list"></div>
-          </section>
-          <section class="calculator-column calculator-expression-column">
-            <div class="calculator-column-header">
-              <h3>Expression</h3>
-            </div>
-            <textarea
-              id="calculator-expression"
-              class="calculator-expression"
-              placeholder='Example: [name] || " - " || [category]'
-            ></textarea>
-            <div class="calculator-preview">
+            <section class="calculator-panel calculator-preview-panel">
               <div>
                 <strong>Preview</strong>
                 <p id="calculator-preview-text" class="small-note">
                   Write an expression to preview it against the first feature.
                 </p>
+                <div id="calculator-preview-details" class="calculator-preview-details" hidden></div>
               </div>
               <div id="calculator-error" class="calculator-error" hidden></div>
-            </div>
+            </section>
             <div class="calculator-actions">
               <button id="calculator-preview-btn" class="ghost-button" type="button">
                 Preview
@@ -374,7 +441,7 @@
 
     <div id="interpolation-modal" class="modal-shell" hidden>
       <div class="modal-backdrop" data-close-interpolation-modal="true"></div>
-      <div class="modal-card modal-card-small" role="dialog" aria-modal="true" aria-labelledby="interpolation-modal-title">
+      <div class="modal-card modal-card-wide" role="dialog" aria-modal="true" aria-labelledby="interpolation-modal-title">
         <div class="panel-heading modal-heading">
           <h2 id="interpolation-modal-title">Point Interpolation</h2>
           <button id="close-interpolation-modal-btn" class="ghost-button" type="button">
@@ -388,6 +455,28 @@
           <label class="field-stack">
             <span class="field-label">Value field</span>
             <select id="interpolation-field" class="dark-input"></select>
+          </label>
+          <label class="field-stack">
+            <span class="field-label">Method</span>
+            <select id="interpolation-method" class="dark-input">
+              <option value="idw">Inverse Distance Weighted</option>
+              <option value="gaussian">Gaussian Kernel</option>
+              <option value="nearest">Nearest Neighbor</option>
+            </select>
+          </label>
+          <label class="field-stack">
+            <span class="field-label">Sample scope</span>
+            <select id="interpolation-scope" class="dark-input">
+              <option value="filtered">Visible features only</option>
+              <option value="all">All point features</option>
+            </select>
+          </label>
+          <label class="field-stack">
+            <span class="field-label">Clip extent</span>
+            <select id="interpolation-clip-mode" class="dark-input">
+              <option value="hull">Convex hull</option>
+              <option value="bounds">Bounding box</option>
+            </select>
           </label>
           <label class="field-stack">
             <span class="field-label">Influence radius (meters)</span>
@@ -405,11 +494,100 @@
             <span class="field-label">Opacity</span>
             <input id="interpolation-opacity" class="dark-input" type="number" min="0.1" max="1" step="0.05" value="0.65" />
           </label>
+          <label class="field-stack">
+            <span class="field-label">Minimum nearby samples</span>
+            <input id="interpolation-min-samples" class="dark-input" type="number" min="1" max="12" step="1" value="2" />
+          </label>
+          <label class="field-stack">
+            <span class="field-label">Color ramp</span>
+            <select id="interpolation-ramp" class="dark-input">
+              <option value="terrain-glow">Terrain Glow</option>
+              <option value="viridis-edge">Viridis Edge</option>
+              <option value="sunset-heat">Sunset Heat</option>
+              <option value="ice-fire">Ice Fire</option>
+            </select>
+          </label>
         </div>
-        <div id="interpolation-summary" class="small-note"></div>
+        <div id="interpolation-summary" class="rule-card interpolation-summary-card"></div>
         <div class="modal-actions-row">
           <button id="clear-interpolation-btn" class="ghost-button" type="button">Clear Surface</button>
           <button id="apply-interpolation-btn" class="ghost-button" type="button">Apply Interpolation</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="heatmap-modal" class="modal-shell" hidden>
+      <div class="modal-backdrop" data-close-heatmap-modal="true"></div>
+      <div class="modal-card modal-card-wide" role="dialog" aria-modal="true" aria-labelledby="heatmap-modal-title">
+        <div class="panel-heading modal-heading">
+          <h2 id="heatmap-modal-title">Point Heatmap</h2>
+          <button id="close-heatmap-modal-btn" class="ghost-button" type="button">
+            Close
+          </button>
+        </div>
+        <p id="heatmap-layer-label" class="small-note">
+          Build a raster heatmap from point density or weighted values.
+        </p>
+        <div class="field-grid">
+          <label class="field-stack">
+            <span class="field-label">Weight field</span>
+            <select id="heatmap-field" class="dark-input"></select>
+          </label>
+          <label class="field-stack">
+            <span class="field-label">Sample scope</span>
+            <select id="heatmap-scope" class="dark-input">
+              <option value="filtered">Visible features only</option>
+              <option value="all">All point features</option>
+            </select>
+          </label>
+          <label class="field-stack">
+            <span class="field-label">Clip extent</span>
+            <select id="heatmap-clip-mode" class="dark-input">
+              <option value="hull">Convex hull</option>
+              <option value="bounds">Bounding box</option>
+            </select>
+          </label>
+          <label class="field-stack">
+            <span class="field-label">Radius (meters)</span>
+            <input id="heatmap-radius" class="dark-input" type="number" min="50" step="50" value="1500" />
+          </label>
+          <label class="field-stack">
+            <span class="field-label">Cell size (meters)</span>
+            <input id="heatmap-cell-size" class="dark-input" type="number" min="25" step="25" value="200" />
+          </label>
+          <label class="field-stack">
+            <span class="field-label">Opacity</span>
+            <input id="heatmap-opacity" class="dark-input" type="number" min="0.1" max="1" step="0.05" value="0.75" />
+          </label>
+          <label class="field-stack">
+            <span class="field-label">Minimum nearby samples</span>
+            <input id="heatmap-min-samples" class="dark-input" type="number" min="1" max="12" step="1" value="1" />
+          </label>
+          <label class="field-stack">
+            <span class="field-label">Intensity exponent</span>
+            <input id="heatmap-intensity" class="dark-input" type="number" min="0.5" max="3" step="0.1" value="1.2" />
+          </label>
+          <label class="field-stack">
+            <span class="field-label">Exact cell size</span>
+            <label class="checkbox-label">
+              <input type="checkbox" id="heatmap-exact-cellsize" />
+              <span>Bypass auto-resize (may cause performance issues for large areas)</span>
+            </label>
+          </label>
+          <label class="field-stack">
+            <span class="field-label">Color ramp</span>
+            <select id="heatmap-ramp" class="dark-input">
+              <option value="sunset-heat">Sunset Heat</option>
+              <option value="terrain-glow">Terrain Glow</option>
+              <option value="viridis-edge">Viridis Edge</option>
+              <option value="ice-fire">Ice Fire</option>
+            </select>
+          </label>
+        </div>
+        <div id="heatmap-summary" class="rule-card interpolation-summary-card"></div>
+        <div class="modal-actions-row">
+          <button id="clear-heatmap-btn" class="ghost-button" type="button">Clear Heatmap</button>
+          <button id="apply-heatmap-btn" class="ghost-button" type="button">Apply Heatmap</button>
         </div>
       </div>
     </div>
@@ -503,5 +681,17 @@
     <script src="https://unpkg.com/tokml@0.4.0/tokml.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/animejs/3.2.2/anime.min.js"></script>
     <script src="./app.js"></script>
+    <script src="./app/00-core.js"></script>
+    <script src="./app/calculator/ast.js"></script>
+    <script src="./app/calculator/tokenizer.js"></script>
+    <script src="./app/calculator/parser.js"></script>
+    <script src="./app/calculator/context.js"></script>
+    <script src="./app/calculator/functions.js"></script>
+    <script src="./app/calculator/evaluator.js"></script>
+    <script src="./app/calculator/catalog.js"></script>
+    <script src="./app/10-analysis-layers.js"></script>
+    <script src="./app/20-tools-ui.js"></script>
+    <script src="./app/30-bootstrap.js"></script>
+    <script src="./app/40-project.js"></script>
   </body>
 </html>
