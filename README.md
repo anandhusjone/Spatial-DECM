@@ -1,4 +1,5 @@
 # Spatial DECM
+![logo](Logo.svg)
 
 Spatial DECM is a lightweight browser-based map viewer and editor for spatial data. Users can upload supported files directly in the webpage, visualize them on top of a dynamic CartoDB basemap, edit uploaded layers, draw new features, perform spatial analysis, and manage multiple layers independently.
 [Check it out here](https://anandhusjone.github.io/Spatial-DECM/)
