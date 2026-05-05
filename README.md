@@ -2,66 +2,150 @@
 
 ![logo](Logo.svg)
 
-Spatial DECM is a lightweight browser-based map viewer and editor for spatial data. Users can upload supported files directly in the webpage, visualize them on top of a dynamic CartoDB basemap, edit uploaded layers, draw new features, perform spatial analysis, and manage multiple layers independently.
-[Check it out here](https://anandhusjone.github.io/Spatial-DECM/)
+**Spatial DECM** is a lightweight, browser-based GIS viewer and editor built for quick, simple spatial tasks — no installation required.
+
+👉 **Live App:** https://anandhusjone.github.io/Spatial-DECM/
+
+---
+
+## Why this exists
+
+This project was inspired by a few common situations:
+
+- GIS software like QGIS or ArcGIS can feel too heavy for beginners or occasional users  
+- Many people uninstall these tools after learning because of size or complexity  
+- Opening a simple GIS file often requires installing full desktop software  
+- Sometimes, you just want to quickly view or make small edits to spatial data  
+
+**Spatial DECM solves this by running entirely in your browser.**
+
+---
+
+## What it does
+
+Spatial DECM is designed as a **quick-access GIS tool** for:
+
+- Visualizing spatial data  
+- Making small edits  
+- Performing lightweight analysis  
+
+No setup. No installs. Just open and use.
+
+---
 
 ## Features
-- CartoDB basemap powered by Leaflet with automatic theme-aware switching (Dark Matter / Light Matter)
-- Basemap switcher on the map toolbar to cycle through CartoDB Dark, CartoDB Light, and Google Satellite independently of the theme
-- Drag-and-drop or file-picker uploads
-- Drop files anywhere on the page to import them
-- Multiple uploaded layers at the same time
-- Per-layer visibility toggle
-- Zoom-to-layer, remove-layer, export, and edit-mode controls in the layer list
-- Automatic map zoom to newly added data
-- Toggle edit mode directly from any layer in the layer list
-- Create a new empty layer directly from the `+` action in the Layers panel
-- Add new point, line, and polygon features into the editable layer
-- Edit geometry nodes on uploaded lines and polygons with the map edit tools
-- Add a new field across all features in a layer from the attribute-table header
-- View and edit an attribute table for the active edit layer
-- Resize the attribute table vertically from its top edge
-- Highlight the selected feature row inside the attribute table
-- Export each layer individually to GeoJSON, KML, or zipped shapefile with a custom filename
-- Field Calculator modal with field/variable browser, grouped function help, saved expressions, preview targeting, and safe expression evaluation
-- Supports QGIS-style arithmetic, string concatenation with `||`, null checks with `IS NULL`, arrays, layer aggregates, `CASE WHEN ... THEN ... ELSE ... END`, named parameters, comments, and spatial functions
-- Spatial calculator functions for `AREA()`, `LENGTH()`, `PERIMETER()`, `LATITUDE()`, `LONGITUDE()`, `CENTROID_LAT()`, and `CENTROID_LON()`
-- Per-layer symbology with single-color, categorized, and graduated styling options (teal-blue, gold-red, mint-purple ramps)
-- Per-layer query builder with AND/OR logic for attribute filtering
-- Point interpolation with inverse distance weighted (IDW), Gaussian kernel, and nearest neighbor methods. Produces a separate raster overlay with color ramp selection, adaptive grid sizing, convex-hull or bounding-box clipping, and a visible map legend
-- Heatmap (point-density) renderer with configurable radius, cell size, opacity, intensity exponent, color ramp, weighted or unweighted modes, and a separate derived raster overlay
-- Large CSV support with worker-backed parsing, progress tracking, automatic sample/grid preview modes, and preserved analysis subsets for heatmap and interpolation
-- Right-click context menu on layer cards for quick access to layer actions
-- Theme toggle with `Dark`, `Light`, and `System` modes across the full app
-- Animated logo, entry animations, and UI transitions
-- Client-side parsing for common spatial formats
-- Dark interface across the whole app
 
-## Supported formats
+### 📂 Data Handling
+- Drag-and-drop file upload
+- File picker support
+- Multiple layers at once
+- Auto zoom to uploaded data
+- Per-layer visibility control
+
+### 🗺️ Map & Basemap
+- CartoDB basemaps (Dark / Light)
+- Google Satellite option
+- Theme-aware UI (Dark / Light / System)
+
+### ✏️ Editing Tools
+- Create new layers
+- Add points, lines, polygons
+- Edit geometries directly on the map
+- Attribute table editing
+- Add new fields to layers
+
+### 🧮 Field Calculator
+- QGIS-style expressions
+- Supports:
+  - Arithmetic
+  - String operations (`||`)
+  - `CASE WHEN` logic
+  - Null checks (`IS NULL`)
+  - Spatial functions
+- Preview before applying
+- Save and reuse expressions
+
+### 📊 Spatial Functions
+- `AREA()`
+- `LENGTH()`
+- `PERIMETER()`
+- `LATITUDE()`, `LONGITUDE()`
+- `CENTROID_LAT()`, `CENTROID_LON()`
+
+### 🎨 Styling & Filtering
+- Single color styling
+- Categorized styling
+- Graduated styling
+- Query builder with AND / OR filters
+
+### 🔥 Analysis Tools
+- Heatmap (point density)
+- Point interpolation:
+  - IDW
+  - Gaussian
+  - Nearest Neighbor
+
+### 📤 Export Options
+- GeoJSON
+- KML
+- Zipped Shapefile
+
+---
+
+## Supported Formats
 
 - `.geojson`
-- `.json` containing GeoJSON
+- `.json` (GeoJSON)
 - `.kml`
 - `.gpx`
-- `.zip` containing a shapefile bundle (`.shp`, `.shx`, `.dbf`, optionally `.prj`)
-- `.csv` with latitude and longitude columns (supports BOM-prefixed headers, comma/semicolon/tab/pipe delimiters, and broader header name variants like `lat`, `lon`, `lng`, `x`, `y`, `xcoord`, `ycoord`, etc.)
+- `.zip` (Shapefile bundle)
+- `.csv` (with latitude & longitude columns)
+
+---
+
+## Usage
+
+1. Open the app  
+2. Drag and drop your file  
+3. View, edit, or analyze your data  
+4. Export if needed  
+
+---
 
 ## Notes
 
-- Shapefile uploads should be zipped and include the related shapefile parts together, typically `.shp`, `.shx`, `.dbf`, and optionally `.prj`.
-- CSV uploads should include a recognizable latitude column such as `latitude` or `lat`, and a longitude column such as `longitude`, `lon`, or `lng`.
-- Calculator QA fixtures and test suites live in `qa/` for regression, QGIS-example comparison, manual checks, and performance logging.
-- Use the `+` button in the Layers panel to browse for files or create a new named layer.
-- To edit an uploaded dataset, enable edit mode for that layer from the Layers panel, then use the map draw and edit controls.
-- The attribute table always shows the features for the layer currently in edit mode, and selecting a map feature highlights its row.
-- The add-field control is a compact `+` icon in the attribute table header.
-- The Field Calculator now prefers the QGIS-style browser engine, falls back to the legacy parser only when needed, and lets you preview against the selected feature or another sample feature before applying the result to the layer.
-- Saved calculator expressions are stored in the browser and can be exported/imported as JSON for reuse.
-- Spatial calculator outputs use geometry from the current feature. `AREA()` returns square meters, `LENGTH()` and `PERIMETER()` return meters, `LATITUDE()` and `LONGITUDE()` read point coordinates, and centroid functions return the feature centroid coordinates.
-- Symbology is configured per layer from the Layers panel. Categorized styling assigns colors to unique values, while graduated styling classifies numeric fields using equal interval or quantile breaks.
-- Filtering is also configured per layer from the Layers panel and supports multiple rules joined by `AND` or `OR`.
-- The theme button on the map toolbar cycles through `Dark`, `Light`, and `System`, and `System` follows the device-wide color scheme automatically. The basemap switcher button cycles through `CartoDB Dark`, `CartoDB Light`, and `Google Satellite` independently of the theme.
-- Exporting opens a small dialog where you can choose the output filename and format, and it never overwrites the original uploaded file.
-- Interpolation and heatmap are available from the Layers panel. Each produces its own temporary raster overlay that can be styled independently and toggled on the map.
-- Very large datasets may feel slow in a pure browser-based viewer.
-- The current version focuses on common client-readable spatial formats rather than every GIS format.
+- Shapefiles must be uploaded as `.zip` including:
+  - `.shp`, `.shx`, `.dbf` (and optionally `.prj`)
+- CSV files should include latitude and longitude fields  
+  (e.g., `lat`, `lon`, `lng`, `x`, `y`)
+- All processing happens **client-side**
+- Large datasets may be slower due to browser limitations
+
+---
+
+## Who is this for?
+
+- Students learning GIS  
+- Non-GIS users who need quick access  
+- Developers working with spatial data  
+- Anyone who wants a simple alternative to heavy GIS tools  
+
+---
+
+## Philosophy
+
+Spatial DECM is **not a replacement** for full GIS software like QGIS or ArcGIS.
+
+It’s built for the moments when those tools feel like overkill.
+
+---
+
+## License
+
+MIT License (or update based on your repo)
+
+---
+
+## Author
+
+Developed by Anandhu SJ
