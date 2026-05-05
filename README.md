@@ -145,7 +145,3 @@ It’s built for the moments when those tools feel like overkill.
 MIT License (or update based on your repo)
 
 ---
-
-## Author
-
-Developed by Anandhu SJ
