@@ -6,8 +6,6 @@ Spatial DECM is a lightweight browser-based map viewer and editor for spatial da
 [Check it out here](https://anandhusjone.github.io/Spatial-DECM/)
 
 ## Features
-
-- Contributor notes live in `memory.md`, `codebase-index.md`, and `todo.md`. Check those first before extending the calculator or larger workflows.
 - CartoDB basemap powered by Leaflet with automatic theme-aware switching (Dark Matter / Light Matter)
 - Basemap switcher on the map toolbar to cycle through CartoDB Dark, CartoDB Light, and Google Satellite independently of the theme
 - Drag-and-drop or file-picker uploads
