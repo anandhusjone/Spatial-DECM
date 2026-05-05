@@ -8,11 +8,10 @@ const helpPages = {
   layers: `<h3>Layers</h3>
 <p>Layers are the building blocks of your map. This app supports:</p>
 <ul>
-  <li><strong>GeoJSON</strong> — Vector data with styles and popups</li>
-  <li><strong>KML</strong> — Google Earth format</li>
-  <li><strong>GeoTIFF</strong> — Raster images via GDAL.js</li>
-  <li><strong>WMS</strong> — Web Map Service tiles from remote servers</li>
-  <li><strong>TileJSON / XYZ</strong> — Custom tile sources (Mapbox, Stadia, etc.)</li>
+  <li><strong>GeoJSON</strong></li>
+  <li><strong>Shapefile</strong> — Zipped</li>
+  <li><strong>KML</strong></li>
+  <li><strong>CSV</strong> - should contain Latitude and Longitude fields</li>
 </ul>
 <p>Use the <strong>Add Layer</strong> button in the map toolbar to get started.</p>`,
 
@@ -31,7 +30,7 @@ const helpPages = {
   <li>Click the <strong>Table</strong> icon on a layer in the Layers panel</li>
   <li>Search, sort, and filter rows</li>
   <li>Click a cell to edit its value</li>
-  <li>Click <strong>Export CSV</strong> to download the data</li>
+  <li>Click <strong>Export Data</strong> to download the data in GeoJSON or Shapefile</li>
 </ul>`,
 
   "field-calculator": `<h3>Field Calculator</h3>
@@ -45,10 +44,9 @@ const helpPages = {
   symbology: `<h3>Symbology</h3>
 <p>Change how your layers appear on the map:</p>
 <ul>
-  <li><strong>Point layers</strong> — Choose icon, color, and size</li>
-  <li><strong>Line layers</strong> — Set stroke width and dash pattern</li>
-  <li><strong>Polygon layers</strong> — Choose fill and stroke styles</li>
-  <li><strong>Choropleth</strong> — Color by attribute value with graduated scale</li>
+  <li><strong>Single colour</strong></li>
+  <li><strong>Graduated</strong> — Use the attribute fields to style</li>
+  <li><strong>Categorized</strong> — Use the attribute fields to style</li>
 </ul>`,
 
   drawing: `<h3>Drawing &amp; Editing</h3>
@@ -56,20 +54,11 @@ const helpPages = {
 <ul>
   <li>Click the <strong>Polygon</strong>, <strong>Line</strong>, or <strong>Point</strong> tool in the toolbar</li>
   <li>Draw on the map — features are saved automatically</li>
-  <li>Right-click to finish a drawing</li>
+  <li>Right-click or Double-click to finish a drawing</li>
   <li>Use <strong>Edit Mode</strong> to move, delete, or modify existing features</li>
 </ul>`,
 
-  "spatial-filter": `<h3>Spatial Filtering</h3>
-<p>Select features based on their location:</p>
-<ul>
-  <li><strong>Box Select</strong> — Drag a rectangle on the map</li>
-  <li><strong>Circle Select</strong> — Click to draw a circle</li>
-  <li><strong>Polygon Select</strong> — Draw a custom shape</li>
-  <li>Choose which layer to query and what to do with selected features</li>
-</ul>`,
-
-  interpolation: `<h3>Interpolation</h3>
+  interpolation: `<h3>Interpolation (Experimental)</h3>
 <p>Create continuous surfaces from point data:</p>
 <ul>
   <li><strong>IDW (Inverse Distance Weighting)</strong> — Fast, local influence</li>
@@ -89,20 +78,18 @@ const helpPages = {
   export: `<h3>Exporting Data</h3>
 <p>Save your work in various formats:</p>
 <ul>
-  <li>Export GeoJSON, KML, GPX from vector layers</li>
-  <li>Export CSV from attribute tables</li>
-  <li>Export raster as GeoTIFF</li>
-  <li>Export the entire map as an HTML file</li>
+  <li>Export GeoJSON, KML, or Shapefile from vector layers</li>
 </ul>`,
 
   projects: `<h3>Projects</h3>
 <p>Save and load your workspace:</p>
 <ul>
-  <li><strong>Save</strong> — Export your current map state as a JSON project file</li>
+  <li><strong>Show a folder to save your entire project</strong></li>
+  <li><strong>Save</strong> — Export your current map state as a .SDECM project file</li>
   <li><strong>Load</strong> — Import a previously saved project</li>
   <li><strong>Auto-save</strong> — The last session is restored automatically</li>
 </ul>
-<p>Projects save layers, view extent, and map settings — not the actual data files.</p>`
+<p>Projects save layers, view extent, and map settings</p>`
 };
 
 const parentToChildren = {
