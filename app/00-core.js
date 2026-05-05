@@ -591,9 +591,9 @@ async function initializeBrandLogo() {
   const svg = brandLogoShell.querySelector("svg");
   const logoText = svg?.querySelector("text");
   if (svg && logoText) {
-    logoText.setAttribute("fill", "none");
+    logoText.setAttribute("fill", "currentColor");
     logoText.setAttribute("stroke", "currentColor");
-    logoText.setAttribute("stroke-width", "1.7");
+    logoText.setAttribute("stroke-width", "2");
     logoText.classList.add("logo-base");
 
     const overlayText = logoText.cloneNode(true);

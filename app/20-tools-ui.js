@@ -44,6 +44,14 @@ function renderCategorizedValueInputs(layerRecord, styleConfig) {
     return;
   }
 
+  // Pre-populate valueColors with palette fallbacks so the map always
+  // matches the UI even before the user picks custom colours.
+  uniqueValues.forEach((value, index) => {
+    if (!(value in styleConfig.categorized.valueColors)) {
+      styleConfig.categorized.valueColors[value] = palette[index % palette.length];
+    }
+  });
+
   categorizedValuesWrap.innerHTML = uniqueValues
     .map((value, index) => {
       const fallbackColor = palette[index % palette.length];
@@ -160,6 +168,8 @@ function updateSymbologyFromControls() {
   layerRecord.styleConfig.graduated.ramp = graduatedRampSelect.value;
   layerRecord.styleConfig.graduated.method = graduatedMethodSelect.value;
   layerRecord.styleConfig.graduated.classCount = Number(graduatedClassCountSelect.value);
+  // Invalidate the per-render break cache so getFeatureColor recomputes.
+  layerRecord.styleConfig.graduated._cache = null;
 
   renderSymbologyPanels(layerRecord);
   rebuildLayerFromData(layerRecord);
@@ -172,6 +182,7 @@ function resetSymbology() {
   }
 
   layerRecord.styleConfig = createDefaultStyleConfig(layerRecord.color);
+  layerRecord.styleConfig.graduated._cache = null;
   symbologyTypeSelect.value = layerRecord.styleConfig.mode;
   symbologyFieldSelect.value = "";
   singleStyleColorInput.value = layerRecord.styleConfig.singleColor;

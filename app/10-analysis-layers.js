@@ -83,21 +83,37 @@ function computeGraduatedBreaks(layerRecord, field, classCount, method) {
   const breaks = [];
 
   if (method === "quantile") {
-    for (let index = 0; index < count; index += 1) {
-      const lowerIndex = Math.floor((index * values.length) / count);
-      const upperIndex = Math.min(
-        values.length - 1,
-        Math.ceil(((index + 1) * values.length) / count) - 1
-      );
-      breaks.push({
-        min: values[lowerIndex],
-        max: values[upperIndex],
-      });
+    // Build cut-point boundaries (count+1 points), then form half-open intervals.
+    const boundaries = [];
+    for (let index = 0; index <= count; index += 1) {
+      const pos = Math.min(values.length - 1, Math.floor((index * values.length) / count));
+      boundaries.push(values[pos]);
     }
+    for (let index = 0; index < count; index += 1) {
+      breaks.push({ min: boundaries[index], max: boundaries[index + 1] });
+    }
+    // Collapse adjacent point-ranges (min===max===prev.max) that would never
+    // match due to the half-open interval logic, to keep the class count honest.
+    const deduped = [breaks[0]];
+    for (let index = 1; index < breaks.length; index += 1) {
+      const prev = deduped[deduped.length - 1];
+      if (breaks[index].min === breaks[index].max && breaks[index].min === prev.max) {
+        prev.max = breaks[index].max;
+      } else {
+        deduped.push(breaks[index]);
+      }
+    }
+    return deduped;
   } else {
     const min = values[0];
     const max = values[values.length - 1];
-    const interval = count > 1 ? (max - min) / count : 0;
+
+    if (min === max) {
+      // All values identical — single class covers everything
+      return [{ min, max }];
+    }
+
+    const interval = (max - min) / count;
 
     for (let index = 0; index < count; index += 1) {
       breaks.push({
@@ -185,18 +201,28 @@ function getFeatureColor(layerRecord, feature) {
   if (styleConfig.mode === "graduated" && styleConfig.field) {
     const numericValue = Number(getNormalizedFeatureValue(feature, styleConfig.field));
     if (Number.isFinite(numericValue)) {
-      const breaks = computeGraduatedBreaks(
-        layerRecord,
-        styleConfig.field,
-        styleConfig.graduated.classCount,
-        styleConfig.graduated.method
-      );
-      const rampColors = buildColorRamp(styleConfig.graduated.ramp, breaks.length || 1);
+      // Cache breaks per render pass to avoid O(n²) recomputation per feature.
+      const g = styleConfig.graduated;
+      if (!g._cache ||
+          g._cache.field !== styleConfig.field ||
+          g._cache.classCount !== g.classCount ||
+          g._cache.method !== g.method ||
+          g._cache.ramp !== g.ramp) {
+        const breaks = computeGraduatedBreaks(layerRecord, styleConfig.field, g.classCount, g.method);
+        g._cache = {
+          field: styleConfig.field,
+          classCount: g.classCount,
+          method: g.method,
+          ramp: g.ramp,
+          breaks,
+          rampColors: buildColorRamp(g.ramp, breaks.length || 1),
+        };
+      }
+      const { breaks, rampColors } = g._cache;
       const breakIndex = breaks.findIndex((currentBreak, index) => {
         if (index === breaks.length - 1) {
           return numericValue >= currentBreak.min && numericValue <= currentBreak.max;
         }
-
         return numericValue >= currentBreak.min && numericValue < currentBreak.max;
       });
 
