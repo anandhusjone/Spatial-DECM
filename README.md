@@ -1,6 +1,6 @@
 # Spatial DECM
 
-![logo](Logo.svg)
+![logo](Logo.png)
 
 **Spatial DECM** is a lightweight, browser-based GIS viewer and editor built for quick, simple spatial tasks — no installation required.
 
