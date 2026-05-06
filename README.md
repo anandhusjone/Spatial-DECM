@@ -1,147 +1,152 @@
-# Spatial DECM
+<div align="center">
+  <br/>
+  <img src="Logo.png" alt="Spatial DECM" width="560">
+  <br/><br/>
+  <p><em>A lightweight, browser-based GIS viewer and editor — no installation required.</em></p>
+  <img src="https://img.shields.io/badge/Client--Side-No_Server-4a9d87?style=for-the-badge" alt="Client Side">
+  &nbsp;
+  <img src="https://img.shields.io/badge/License-MIT-6b7280?style=for-the-badge" alt="MIT License">
+  <br/><br/>
+  ---
+</div>
 
-![logo](Logo.png)
+<br/>
 
-**Spatial DECM** is a lightweight, browser-based GIS viewer and editor built for quick, simple spatial tasks — no installation required.
+<div align="center">
+  <a href="https://anandhusjone.github.io/Spatial-DECM/">
+    <img src="https://img.shields.io/badge/%E2%80%8B%20%E2%80%8B%20%E2%80%8B%20%E2%80%8B%20%E2%80%8B%20%E2%86%92%20%20Start%20Using%20It%20Here%20%20%20%20%20%20%20%20%20%20-000000?style=for-the-badge" alt="→ Start Using It Here" height="40">
+  </a>
+</div>
 
-👉 **Live App:** https://anandhusjone.github.io/Spatial-DECM/
-
----
+<br/>
 
 ## Why this exists
 
-This project was inspired by a few common situations:
+Full GIS software like QGIS or ArcGIS is powerful — but often overkill. Opening a single `.geojson` file shouldn't require a 2GB install.
 
-- GIS software like QGIS or ArcGIS can feel too heavy for beginners or occasional users  
-- Many people uninstall these tools after learning because of size or complexity  
-- Opening a simple GIS file often requires installing full desktop software  
-- Sometimes, you just want to quickly view or make small edits to spatial data  
+**Spatial DECM is for those in-between moments.** Quick edits. Fast previews. No setup. Runs entirely in your browser.
 
-**Spatial DECM solves this by running entirely in your browser.**
-
----
-
-## What it does
-
-Spatial DECM is designed as a **quick-access GIS tool** for:
-
-- Visualizing spatial data  
-- Making small edits  
-- Performing lightweight analysis  
-
-No setup. No installs. Just open and use.
-
----
+<br/>
 
 ## Features
 
-### 📂 Data Handling
-- Drag-and-drop file upload
-- File picker support
-- Multiple layers at once
-- Auto zoom to uploaded data
-- Per-layer visibility control
+<table>
+<tr>
+<td width="50%" valign="top">
 
-### 🗺️ Map & Basemap
-- CartoDB basemaps (Dark / Light)
-- Google Satellite option
-- Theme-aware UI (Dark / Light / System)
+**📂 Data**
 
-### ✏️ Editing Tools
-- Create new layers
-- Add points, lines, polygons
-- Edit geometries directly on the map
-- Attribute table editing
-- Add new fields to layers
+Drag-and-drop upload · File picker · Multiple layers · Auto-zoom · Per-layer visibility
 
-### 🧮 Field Calculator
-- QGIS-style expressions
-- Supports:
-  - Arithmetic
-  - String operations (`||`)
-  - `CASE WHEN` logic
-  - Null checks (`IS NULL`)
-  - Spatial functions
-- Preview before applying
-- Save and reuse expressions
+<br/>
 
-### 📊 Spatial Functions
-- `AREA()`
-- `LENGTH()`
-- `PERIMETER()`
-- `LATITUDE()`, `LONGITUDE()`
-- `CENTROID_LAT()`, `CENTROID_LON()`
+**🗺️ Map**
 
-### 🎨 Styling & Filtering
-- Single color styling
-- Categorized styling
-- Graduated styling
-- Query builder with AND / OR filters
+CartoDB Dark / Light basemaps · Google Satellite · Dark / Light / System theme
 
-### 🔥 Analysis Tools
-- Heatmap (point density)
-- Point interpolation:
-  - IDW
-  - Gaussian
-  - Nearest Neighbor
+<br/>
 
-### 📤 Export Options
-- GeoJSON
-- KML
-- Zipped Shapefile
+**✏️ Editing**
+
+Create layers · Add points, lines, polygons · Edit geometries · Attribute table editing · Add custom fields
+
+<br/>
+
+**🧮 Field Calculator**
+
+QGIS-style expressions · Arithmetic · String ops (`||`) · `CASE WHEN` · Null checks · Spatial functions · Preview before applying · Save & reuse expressions
+
+</td>
+<td width="50%" valign="top">
+
+**📊 Spatial Functions**
+
+`AREA()` · `LENGTH()` · `PERIMETER()` · `LATITUDE()` · `LONGITUDE()` · `CENTROID_LAT()` · `CENTROID_LON()`
+
+<br/>
+
+**🎨 Styling**
+
+Single color · Categorized · Graduated · Query builder with `AND` / `OR` filters
+
+<br/>
+
+**🔥 Analysis**
+
+Heatmap · IDW interpolation · Gaussian interpolation · Nearest Neighbor interpolation
+
+<br/>
+
+**📤 Export**
+
+GeoJSON · KML · Zipped Shapefile
+
+</td>
+</tr>
+</table>
+
+<br/>
 
 ---
+
+<br/>
 
 ## Supported Formats
 
-- `.geojson`
-- `.json` (GeoJSON)
-- `.kml`
-- `.gpx`
-- `.zip` (Shapefile bundle)
-- `.csv` (with latitude & longitude columns)
+| Format | Notes |
+|--------|-------|
+| `.geojson` / `.json` | Standard GeoJSON |
+| `.kml` | Keyhole Markup Language |
+| `.gpx` | GPS Exchange Format |
+| `.zip` | Shapefile bundle — must include `.shp`, `.shx`, `.dbf` |
+| `.csv` | Must include lat/lon columns (`lat`, `lon`, `lng`, `x`, `y`) |
+
+<br/>
 
 ---
+
+<br/>
 
 ## Usage
 
-1. Open the app  
-2. Drag and drop your file  
-3. View, edit, or analyze your data  
-4. Export if needed  
+```
+1. Open the app
+2. Drag and drop your file
+3. View, edit, or analyze
+4. Export when done
+```
+
+> All processing happens **client-side**. Your data never leaves your browser.  
+> Large datasets may run slower due to browser memory limits.
+
+<br/>
 
 ---
 
-## Notes
-
-- Shapefiles must be uploaded as `.zip` including:
-  - `.shp`, `.shx`, `.dbf` (and optionally `.prj`)
-- CSV files should include latitude and longitude fields  
-  (e.g., `lat`, `lon`, `lng`, `x`, `y`)
-- All processing happens **client-side**
-- Large datasets may be slower due to browser limitations
-
----
+<br/>
 
 ## Who is this for?
 
-- Students learning GIS  
-- Non-GIS users who need quick access  
-- Developers working with spatial data  
-- Anyone who wants a simple alternative to heavy GIS tools  
+- Students learning GIS for the first time
+- Non-GIS users who need quick spatial access
+- Developers working with spatial data
+- Anyone who finds full GIS software too heavy for simple tasks
+
+<br/>
 
 ---
+
+<br/>
 
 ## Philosophy
 
-Spatial DECM is **not a replacement** for full GIS software like QGIS or ArcGIS.
+> Spatial DECM is **not** a replacement for QGIS or ArcGIS.  
+> It's built for the moments when those feel like overkill.
 
-It’s built for the moments when those tools feel like overkill.
-
----
-
-## License
-
-MIT License (or update based on your repo)
+<br/>
 
 ---
+
+<div align="center">
+  <sub>Built for the browser. Built for simplicity.</sub>
+</div>
