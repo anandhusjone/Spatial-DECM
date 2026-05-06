@@ -3,11 +3,7 @@
   <img src="Logo.png" alt="Spatial DECM" width="560">
   <br/><br/>
   <p><em>A lightweight, browser-based GIS viewer and editor — no installation required.</em></p>
-  <img src="https://img.shields.io/badge/Client--Side-No_Server-4a9d87?style=for-the-badge" alt="Client Side">
-  &nbsp;
-  <img src="https://img.shields.io/badge/License-MIT-6b7280?style=for-the-badge" alt="MIT License">
-  <br/><br/>
-  ---
+  
 </div>
 
 <br/>
@@ -87,7 +83,6 @@ GeoJSON · KML · Zipped Shapefile
 
 <br/>
 
----
 
 <br/>
 
@@ -103,9 +98,6 @@ GeoJSON · KML · Zipped Shapefile
 
 <br/>
 
----
-
-<br/>
 
 ## Usage
 
@@ -121,7 +113,6 @@ GeoJSON · KML · Zipped Shapefile
 
 <br/>
 
----
 
 <br/>
 
@@ -134,7 +125,7 @@ GeoJSON · KML · Zipped Shapefile
 
 <br/>
 
----
+
 
 <br/>
 
@@ -145,8 +136,14 @@ GeoJSON · KML · Zipped Shapefile
 
 <br/>
 
----
+
 
 <div align="center">
   <sub>Built for the browser. Built for simplicity.</sub>
+</div>
+
+<div align="center">
+  <a href="https://anandhusjone.github.io/Spatial-DECM/">
+    <img src="launch-button.svg" alt="Start Using Spatial-DECM" height="48">
+  </a>
 </div>
