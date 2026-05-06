@@ -1,16 +1,15 @@
 <div align="center">
   <br/>
-  <img src="Logo.png" alt="Spatial DECM" width="560">
+  <img src="Logo.png" alt="Spatial DECM" style="max-width: 100%; height: auto;">
   <br/><br/>
-  <p><em>A lightweight, browser-based GIS viewer and editor — no installation required.</em></p>
-  
+  <p><em>A lightweight, browser-based GIS viewer and editor</em></p>
 </div>
 
 <br/>
 
 <div align="center">
-  <a href="https://anandhusjone.github.io/Spatial-DECM/">
-    <img src="https://img.shields.io/badge/%E2%80%8B%20%E2%80%8B%20%E2%80%8B%20%E2%80%8B%20%E2%80%8B%20%E2%86%92%20%20Start%20Using%20It%20Here%20%20%20%20%20%20%20%20%20%20-000000?style=for-the-badge" alt="→ Start Using It Here" height="40">
+  <a href="https://anandhusjone.github.io/Spatial-DECM/" target="_blank" rel="noopener noreferrer">
+    <img src="launch-button.svg" alt="Start Using Spatial-DECM" height="48">
   </a>
 </div>
 
@@ -119,9 +118,9 @@ GeoJSON · KML · Zipped Shapefile
 ## Who is this for?
 
 - Students learning GIS for the first time
-- Non-GIS users who need quick spatial access
+- Non-GIS users who need quick access to GIS
 - Developers working with spatial data
-- Anyone who finds full GIS software too heavy for simple tasks
+- Anyone who finds a full GIS software too heavy for simple tasks
 
 <br/>
 
@@ -131,8 +130,8 @@ GeoJSON · KML · Zipped Shapefile
 
 ## Philosophy
 
-> Spatial DECM is **not** a replacement for QGIS or ArcGIS.  
-> It's built for the moments when those feel like overkill.
+ Spatial DECM is **not** a replacement for QGIS or ArcGIS.  
+ It's built for the moments when those feel like overkill.
 
 <br/>
 
@@ -142,8 +141,10 @@ GeoJSON · KML · Zipped Shapefile
   <sub>Built for the browser. Built for simplicity.</sub>
 </div>
 
+<br/>
+
 <div align="center">
-  <a href="https://anandhusjone.github.io/Spatial-DECM/">
+  <a href="https://anandhusjone.github.io/Spatial-DECM/" target="_blank" rel="noopener noreferrer">
     <img src="launch-button.svg" alt="Start Using Spatial-DECM" height="48">
   </a>
 </div>
