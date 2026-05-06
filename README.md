@@ -8,7 +8,7 @@
 <br/>
 
 <div align="center">
-  <a href="https://anandhusjone.github.io/Spatial-DECM/" target="_blank" rel="noopener noreferrer">
+  <a href="https://anandhusjone.github.io/Spatial-DECM/">
     <img src="launch-button.svg" alt="Start Using Spatial-DECM" height="48">
   </a>
 </div>
@@ -144,7 +144,7 @@ GeoJSON · KML · Zipped Shapefile
 <br/>
 
 <div align="center">
-  <a href="https://anandhusjone.github.io/Spatial-DECM/" target="_blank" rel="noopener noreferrer">
+  <a href="https://anandhusjone.github.io/Spatial-DECM/">
     <img src="launch-button.svg" alt="Start Using Spatial-DECM" height="48">
   </a>
 </div>
