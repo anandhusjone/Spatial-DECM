@@ -91,7 +91,6 @@ GeoJSON · KML · Zipped Shapefile
 |--------|-------|
 | `.geojson` / `.json` | Standard GeoJSON |
 | `.kml` | Keyhole Markup Language |
-| `.gpx` | GPS Exchange Format |
 | `.zip` | Shapefile bundle — must include `.shp`, `.shx`, `.dbf` |
 | `.csv` | Must include lat/lon columns (`lat`, `lon`, `lng`, `x`, `y`) |
 
