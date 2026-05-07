@@ -31,13 +31,13 @@ Full GIS software like QGIS or ArcGIS is powerful — but often overkill. Openin
 
 **📂 Data**
 
-Drag-and-drop upload · File picker · Multiple layers · Auto-zoom · Per-layer visibility
+Drag-and-drop upload · File picker · Multiple vector/raster layers · Auto-zoom · Per-layer visibility
 
 <br/>
 
 **🗺️ Map**
 
-CartoDB Dark / Light basemaps · Google Satellite · Dark / Light / System theme
+Top toolbar basemap switcher · CartoDB Dark / Light basemaps · Google Satellite · Dark / Light / System theme · Attribute table toggle
 
 <br/>
 
@@ -62,7 +62,7 @@ QGIS-style expressions · Arithmetic · String ops (`||`) · `CASE WHEN` · Null
 
 **🎨 Styling**
 
-Single color · Categorized · Graduated · Query builder with `AND` / `OR` filters
+Vector single color · Categorized · Graduated · Raster gray / pseudocolor · Color ramps · Contrast / brightness / opacity · Query builder with `AND` / `OR` filters
 
 <br/>
 
@@ -94,6 +94,7 @@ GeoJSON · KML · Zipped Shapefile
 | `.gpx` | GPS Exchange Format |
 | `.zip` | Shapefile bundle — must include `.shp`, `.shx`, `.dbf` |
 | `.csv` | Must include lat/lon columns (`lat`, `lon`, `lng`, `x`, `y`) |
+| `.tif` / `.tiff` | GeoTIFF raster with tiled browser rendering, raster metadata, pixel sampling, NoData handling, and WGS84 / Web Mercator / WGS84 UTM alignment. |
 
 <br/>
 
@@ -109,6 +110,10 @@ GeoJSON · KML · Zipped Shapefile
 
 > All processing happens **client-side**. Your data never leaves your browser.  
 > Large datasets may run slower due to browser memory limits.
+
+## CRS handling
+
+Coordinate system detection, validation, transformation, and layer reprojection are centralized in `app/crs-manager.js`. The app uses Proj4 when available, includes built-in support for WGS84, Web Mercator, and WGS84 UTM zones, and exposes registration hooks for custom CRS definitions. Vector imports with declared CRS metadata are normalized to the map CRS, and GeoTIFF rasters use the same CRS service for alignment and sampling.
 
 <br/>
 

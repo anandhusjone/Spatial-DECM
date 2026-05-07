@@ -183,6 +183,222 @@ function resetSymbology() {
   updateStatus(`Symbology reset for ${layerRecord.name}.`);
 }
 
+function cloneRasterStyleConfig(styleConfig, stats = {}) {
+  const cloned = createDefaultRasterStyleConfig(stats);
+  return {
+    ...cloned,
+    ...styleConfig,
+    classCount: Number(styleConfig?.classCount || cloned.classCount),
+    band: Number(styleConfig?.band || cloned.band),
+    min: Number.isFinite(Number(styleConfig?.min)) ? Number(styleConfig.min) : cloned.min,
+    max: Number.isFinite(Number(styleConfig?.max)) ? Number(styleConfig.max) : cloned.max,
+    brightness: Number(styleConfig?.brightness || 0),
+    contrast: Number(styleConfig?.contrast || 0),
+    opacity: Number.isFinite(Number(styleConfig?.opacity)) ? Number(styleConfig.opacity) : cloned.opacity,
+    quantileBreaks: Array.isArray(styleConfig?.quantileBreaks) ? styleConfig.quantileBreaks : [],
+  };
+}
+
+function formatRasterMetadataValue(value) {
+  if (value == null || value === "") {
+    return "Not available";
+  }
+  if (typeof value === "number") {
+    return formatCompactNumber(value, 6);
+  }
+  return String(value);
+}
+
+function renderRasterMetadata(layerRecord) {
+  const metadata = layerRecord?.rasterMetadata;
+  if (!metadata || !rasterMetadataList) {
+    return;
+  }
+
+  const rows = [
+    ["CRS", metadata.crs],
+    ["Resolution", `${formatRasterMetadataValue(metadata.resolutionX)} x ${formatRasterMetadataValue(metadata.resolutionY)}`],
+    ["Extent", formatRasterExtent(metadata.extent)],
+    ["Raster size", `${formatCompactNumber(metadata.width, 0)} x ${formatCompactNumber(metadata.height, 0)} pixels`],
+    ["Band count", metadata.bandCount],
+    ["NoData", metadata.noData ?? "None declared"],
+    ["Sampled range", `${formatCompactNumber(metadata.minValue)} to ${formatCompactNumber(metadata.maxValue)}`],
+  ];
+
+  if (metadata.note) {
+    rows.push(["Alignment note", metadata.note]);
+  }
+
+  rasterMetadataList.innerHTML = rows
+    .map(([label, value]) => `
+      <div class="raster-metadata-row">
+        <span>${escapeHtml(label)}</span>
+        <strong>${escapeHtml(formatRasterMetadataValue(value))}</strong>
+      </div>
+    `)
+    .join("");
+}
+
+function renderRasterBandOptions(layerRecord) {
+  const bandCount = layerRecord?.rasterMetadata?.bandCount || 1;
+  rasterBandSelect.innerHTML = Array.from({ length: bandCount }, (_, index) => `
+    <option value="${index + 1}">Band ${index + 1}</option>
+  `).join("");
+}
+
+function readRasterStyleControls() {
+  const noDataText = rasterNoDataInput.value.trim();
+  const min = Number(rasterMinInput.value);
+  const max = Number(rasterMaxInput.value);
+  return {
+    mode: rasterRenderModeSelect.value,
+    band: Number(rasterBandSelect.value || 1),
+    ramp: rasterRampSelect.value,
+    classification: rasterClassificationSelect.value,
+    classCount: Number(rasterClassCountSelect.value || 5),
+    min: Number.isFinite(min) ? min : 0,
+    max: Number.isFinite(max) && max !== min ? max : min + 1,
+    noData: noDataText === "" ? null : Number(noDataText),
+    brightness: Number(rasterBrightnessInput.value || 0),
+    contrast: Number(rasterContrastInput.value || 0),
+    opacity: Number(rasterOpacityInput.value || 0.85),
+    quantileBreaks: [],
+  };
+}
+
+function setRasterControlsFromStyle(styleConfig) {
+  rasterRenderModeSelect.value = styleConfig.mode || "gray";
+  rasterBandSelect.value = String(styleConfig.band || 1);
+  rasterRampSelect.value = styleConfig.ramp || "terrain-glow";
+  rasterClassificationSelect.value = styleConfig.classification || "continuous";
+  rasterClassCountSelect.value = String(styleConfig.classCount || 5);
+  rasterMinInput.value = String(styleConfig.min ?? 0);
+  rasterMaxInput.value = String(styleConfig.max ?? 1);
+  rasterNoDataInput.value = styleConfig.noData == null ? "" : String(styleConfig.noData);
+  rasterBrightnessInput.value = String(styleConfig.brightness || 0);
+  rasterContrastInput.value = String(styleConfig.contrast || 0);
+  rasterOpacityInput.value = String(styleConfig.opacity ?? 0.85);
+}
+
+function renderRasterStylePreview() {
+  if (!rasterStylePreview) {
+    return;
+  }
+
+  const styleConfig = readRasterStyleControls();
+  const rampStops = styleConfig.mode === "gray"
+    ? ["#000000", "#ffffff"]
+    : getInterpolationRampStops(styleConfig.ramp);
+  const gradient = `linear-gradient(90deg, ${rampStops.join(", ")})`;
+  const classNote = styleConfig.classification === "continuous"
+    ? "Continuous stretch"
+    : `${styleConfig.classCount} ${styleConfig.classification === "quantile" ? "quantile" : "equal interval"} classes`;
+
+  rasterStylePreview.innerHTML = `
+    <div class="map-legend-title">${escapeHtml(styleConfig.mode === "gray" ? "Singleband gray" : "Singleband pseudocolor")}</div>
+    <div class="map-legend-gradient" style="background:${gradient}"></div>
+    <div class="map-legend-range">
+      <span>${escapeHtml(formatCompactNumber(styleConfig.min))}</span>
+      <span>${escapeHtml(formatCompactNumber(styleConfig.max))}</span>
+    </div>
+    <div class="small-note">${escapeHtml(classNote)} • opacity ${escapeHtml(formatCompactNumber(styleConfig.opacity, 2))}</div>
+  `;
+}
+
+async function updateRasterStyleBandStats() {
+  const layerRecord = getLayerRecordById(activeRasterStyleLayerId);
+  if (!layerRecord?.rasterImage) {
+    return;
+  }
+
+  try {
+    const noDataText = rasterNoDataInput.value.trim();
+    const noData = noDataText === "" ? layerRecord.rasterMetadata.noData : Number(noDataText);
+    const bandIndex = Math.max(0, Number(rasterBandSelect.value || 1) - 1);
+    const stats = await computeRasterBandStats(layerRecord.rasterImage, bandIndex, noData);
+    rasterMinInput.value = String(stats.min);
+    rasterMaxInput.value = String(stats.max);
+    layerRecord.rasterMetadata.minValue = stats.min;
+    layerRecord.rasterMetadata.maxValue = stats.max;
+    layerRecord.rasterStyleConfig.quantileBreaks = computeRasterQuantileBreaks(stats.values, Number(rasterClassCountSelect.value || 5));
+    renderRasterMetadata(layerRecord);
+    renderRasterStylePreview();
+  } catch (error) {
+    updateStatus(`Could not read raster band statistics: ${error.message}`, true);
+  }
+}
+
+function openRasterStyleModal(layerId) {
+  const layerRecord = getLayerRecordById(layerId);
+  if (!layerRecord || layerRecord.rasterKind !== "geotiff") {
+    return;
+  }
+
+  activeRasterStyleLayerId = layerId;
+  layerRecord.rasterStyleConfig = cloneRasterStyleConfig(layerRecord.rasterStyleConfig, {
+    min: layerRecord.rasterMetadata?.minValue,
+    max: layerRecord.rasterMetadata?.maxValue,
+    noData: layerRecord.rasterMetadata?.noData,
+  });
+  rasterStyleLayerLabel.textContent = `Style ${layerRecord.name} using singleband gray or pseudocolor rendering.`;
+  renderRasterBandOptions(layerRecord);
+  setRasterControlsFromStyle(layerRecord.rasterStyleConfig);
+  renderRasterMetadata(layerRecord);
+  renderRasterStylePreview();
+  showModal(rasterStyleModal);
+}
+
+function closeRasterStyleModal() {
+  hideModal(rasterStyleModal, () => {
+    activeRasterStyleLayerId = "";
+  });
+}
+
+async function applyRasterStyleFromControls() {
+  const layerRecord = getLayerRecordById(activeRasterStyleLayerId);
+  if (!layerRecord || layerRecord.rasterKind !== "geotiff") {
+    return;
+  }
+
+  const styleConfig = readRasterStyleControls();
+  if (styleConfig.classification === "quantile") {
+    const stats = await computeRasterBandStats(
+      layerRecord.rasterImage,
+      Math.max(0, styleConfig.band - 1),
+      styleConfig.noData
+    );
+    styleConfig.quantileBreaks = computeRasterQuantileBreaks(stats.values, styleConfig.classCount);
+  } else {
+    styleConfig.quantileBreaks = [];
+  }
+  layerRecord.rasterStyleConfig = styleConfig;
+  if (layerRecord.rasterTileLayer?.setOpacity) {
+    layerRecord.rasterTileLayer.setOpacity(1);
+  }
+  rebuildLayerFromData(layerRecord);
+  renderLayerList();
+  updateStatus(`Raster style updated for ${layerRecord.name}.`);
+  if (typeof onProjectDirty === "function") onProjectDirty();
+  closeRasterStyleModal();
+}
+
+async function resetRasterStyle() {
+  const layerRecord = getLayerRecordById(activeRasterStyleLayerId);
+  if (!layerRecord?.rasterImage) {
+    return;
+  }
+
+  const stats = await computeRasterBandStats(layerRecord.rasterImage, 0, layerRecord.rasterMetadata.noData);
+  layerRecord.rasterStyleConfig = createDefaultRasterStyleConfig({
+    min: stats.min,
+    max: stats.max,
+    noData: layerRecord.rasterMetadata.noData,
+  });
+  layerRecord.rasterStyleConfig.quantileBreaks = computeRasterQuantileBreaks(stats.values, layerRecord.rasterStyleConfig.classCount);
+  setRasterControlsFromStyle(layerRecord.rasterStyleConfig);
+  renderRasterStylePreview();
+}
+
 function openInterpolationModal(layerId) {
   const layerRecord = getLayerRecordById(layerId);
   if (!layerRecord || !isVectorLayerRecord(layerRecord) || !isInterpolationEligible(layerRecord)) {
@@ -1558,13 +1774,17 @@ async function handleFiles(files) {
 
     try {
       const { data, sourceType, importKind } = await parseSpatialFile(file);
-      const layerRecord = importKind === "csv-dataset"
-        ? (data.previewMode === "full"
-          ? createLayerRecord(buildCsvPreviewGeoJSON(data), file.name, sourceType)
-          : createLargeCsvLayerRecord(data, file.name, sourceType))
-        : createLayerRecord(data, file.name, sourceType);
+      const layerRecord = importKind === "geotiff"
+        ? createGeoTiffLayerRecord(data, file.name, sourceType)
+        : importKind === "csv-dataset"
+          ? (data.previewMode === "full"
+            ? createLayerRecord(buildCsvPreviewGeoJSON(data), file.name, sourceType)
+            : createLargeCsvLayerRecord(data, file.name, sourceType))
+          : createLayerRecord(data, file.name, sourceType);
       addLayerRecord(layerRecord);
-      if (isLargeCsvLayerRecord(layerRecord)) {
+      if (isRasterLayerRecord(layerRecord) && layerRecord.rasterKind === "geotiff") {
+        updateStatus(`Loaded ${file.name} as a GeoTIFF raster (${layerRecord.rasterMetadata.width} x ${layerRecord.rasterMetadata.height}, ${layerRecord.rasterMetadata.bandCount} band(s)).`);
+      } else if (isLargeCsvLayerRecord(layerRecord)) {
         updateStatus(`Loaded ${file.name} in large-file mode with ${formatCompactNumber(layerRecord.featureCount, 0)} points.`);
       } else {
         updateStatus(`Loaded ${file.name} as a ${sourceType} layer.`);
@@ -1733,4 +1953,3 @@ function downloadTextFile(filename, content, mimeType) {
   anchor.remove();
   URL.revokeObjectURL(url);
 }
-

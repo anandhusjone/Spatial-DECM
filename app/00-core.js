@@ -129,6 +129,24 @@ const interpolationRampSelect = document.getElementById("interpolation-ramp");
 const interpolationSummary = document.getElementById("interpolation-summary");
 const applyInterpolationBtn = document.getElementById("apply-interpolation-btn");
 const clearInterpolationBtn = document.getElementById("clear-interpolation-btn");
+const rasterStyleModal = document.getElementById("raster-style-modal");
+const closeRasterStyleModalBtn = document.getElementById("close-raster-style-modal-btn");
+const rasterStyleLayerLabel = document.getElementById("raster-style-layer-label");
+const rasterRenderModeSelect = document.getElementById("raster-render-mode");
+const rasterBandSelect = document.getElementById("raster-band");
+const rasterRampSelect = document.getElementById("raster-ramp");
+const rasterClassificationSelect = document.getElementById("raster-classification");
+const rasterClassCountSelect = document.getElementById("raster-class-count");
+const rasterMinInput = document.getElementById("raster-min");
+const rasterMaxInput = document.getElementById("raster-max");
+const rasterNoDataInput = document.getElementById("raster-nodata");
+const rasterBrightnessInput = document.getElementById("raster-brightness");
+const rasterContrastInput = document.getElementById("raster-contrast");
+const rasterOpacityInput = document.getElementById("raster-opacity");
+const rasterStylePreview = document.getElementById("raster-style-preview");
+const rasterMetadataList = document.getElementById("raster-metadata-list");
+const rasterResetStyleBtn = document.getElementById("raster-reset-style-btn");
+const rasterApplyStyleBtn = document.getElementById("raster-apply-style-btn");
 const heatmapModal = document.getElementById("heatmap-modal");
 const closeHeatmapModalBtn = document.getElementById("close-heatmap-modal-btn");
 const heatmapLayerLabel = document.getElementById("heatmap-layer-label");
@@ -169,6 +187,7 @@ let activeSymbologyLayerId = "";
 let activeInterpolationLayerId = "";
 let activeHeatmapLayerId = "";
 let activeFilterLayerId = "";
+let activeRasterStyleLayerId = "";
 let isDropOverlayVisible = false;
 let isAttributeTableVisible = true;
 
@@ -191,6 +210,7 @@ const interpolationColorRamps = {
   "viridis-edge": ["#46327e", "#365c8d", "#277f8e", "#4ac16d", "#fde725"],
   "sunset-heat": ["#2d1248", "#7c1d6f", "#d14c65", "#f28f3b", "#ffe082"],
   "ice-fire": ["#113a6b", "#2bc0c7", "#f1f5f9", "#ff8a5b", "#7b1e3f"],
+  gray: ["#000000", "#ffffff"],
 };
 
 const INTERPOLATION_MAX_GRID_DIMENSION = 260;
@@ -324,6 +344,25 @@ function createDefaultHeatmapConfig() {
     minSamples: 1,
     intensity: 1.2,
     ramp: "sunset-heat",
+  };
+}
+
+function createDefaultRasterStyleConfig(stats = {}) {
+  const min = Number.isFinite(stats.min) ? stats.min : 0;
+  const max = Number.isFinite(stats.max) && stats.max !== min ? stats.max : min + 1;
+  return {
+    mode: "gray",
+    band: 1,
+    ramp: "terrain-glow",
+    classification: "continuous",
+    classCount: 5,
+    min,
+    max,
+    noData: stats.noData ?? null,
+    brightness: 0,
+    contrast: 0,
+    opacity: 0.85,
+    quantileBreaks: [],
   };
 }
 

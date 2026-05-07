@@ -580,6 +580,11 @@ li {
   color: color-mix(in srgb, #ff8a5b 78%, white 10%);
 }
 
+.layer-menu-action.raster-style,
+.layer-context-action.raster {
+  color: color-mix(in srgb, #43c2ff 84%, white 8%);
+}
+
 .layer-context-menu {
   position: fixed;
   z-index: 1200;
@@ -631,6 +636,64 @@ li {
 
 .layer-context-action.heatmap {
   color: color-mix(in srgb, #ff8a5b 78%, white 10%);
+}
+
+.raster-style-shell {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(240px, 0.8fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.raster-style-controls,
+.raster-metadata-panel {
+  min-width: 0;
+}
+
+.raster-metadata-panel {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--rule-card-bg) 82%, transparent);
+  padding: 14px;
+}
+
+.raster-metadata-panel h3 {
+  margin: 0 0 12px;
+  font-size: 0.95rem;
+}
+
+.raster-metadata-list {
+  display: grid;
+  gap: 8px;
+}
+
+.raster-metadata-row {
+  display: grid;
+  gap: 4px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--line-muted);
+}
+
+.raster-metadata-row:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.raster-metadata-row span {
+  color: var(--muted);
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.raster-metadata-row strong {
+  color: var(--text);
+  font-size: 0.88rem;
+  overflow-wrap: anywhere;
+}
+
+.raster-style-preview {
+  margin-top: 14px;
 }
 
 .edit-mode-toggle:disabled {
@@ -726,8 +789,8 @@ li {
 
 .floating-basemap-btn {
   position: absolute;
-  bottom: 18px;
-  right: 18px;
+  top: 18px;
+  right: 168px;
   z-index: 500;
   width: 44px;
   height: 44px;
@@ -1970,5 +2033,9 @@ li {
     right: 16px;
     left: 16px;
     max-width: none;
+  }
+
+  .raster-style-shell {
+    grid-template-columns: 1fr;
   }
 }

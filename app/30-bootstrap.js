@@ -114,6 +114,25 @@ singleStyleColorInput.addEventListener("input", updateSymbologyFromControls);
 graduatedRampSelect.addEventListener("change", updateSymbologyFromControls);
 graduatedMethodSelect.addEventListener("change", updateSymbologyFromControls);
 graduatedClassCountSelect.addEventListener("change", updateSymbologyFromControls);
+closeRasterStyleModalBtn.addEventListener("click", closeRasterStyleModal);
+rasterApplyStyleBtn.addEventListener("click", applyRasterStyleFromControls);
+rasterResetStyleBtn.addEventListener("click", resetRasterStyle);
+[
+  rasterRenderModeSelect,
+  rasterRampSelect,
+  rasterClassificationSelect,
+  rasterClassCountSelect,
+  rasterMinInput,
+  rasterMaxInput,
+  rasterNoDataInput,
+  rasterBrightnessInput,
+  rasterContrastInput,
+  rasterOpacityInput,
+].forEach((input) => {
+  input.addEventListener("input", renderRasterStylePreview);
+  input.addEventListener("change", renderRasterStylePreview);
+});
+rasterBandSelect.addEventListener("change", updateRasterStyleBandStats);
 closeInterpolationModalBtn.addEventListener("click", closeInterpolationModal);
 applyInterpolationBtn.addEventListener("click", applyInterpolationToLayer);
 clearInterpolationBtn.addEventListener("click", clearInterpolationForLayer);
@@ -215,6 +234,12 @@ calculatorModal.addEventListener("click", (event) => {
 symbologyModal.addEventListener("click", (event) => {
   if (event.target.dataset.closeSymbologyModal === "true") {
     closeSymbologyModal();
+  }
+});
+
+rasterStyleModal.addEventListener("click", (event) => {
+  if (event.target.dataset.closeRasterStyleModal === "true") {
+    closeRasterStyleModal();
   }
 });
 

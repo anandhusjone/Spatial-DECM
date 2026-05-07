@@ -9,6 +9,7 @@ function collectFieldNamesFromFeatures(features) {
 }
 
 function normalizeGeoJSON(geojson) {
+  const sourceCrs = CRSManager.detectGeoJsonCrs(geojson);
   let featureCollection;
 
   if (geojson?.type === "FeatureCollection" && Array.isArray(geojson.features)) {
@@ -45,6 +46,16 @@ function normalizeGeoJSON(geojson) {
     feature.id = feature.id || crypto.randomUUID();
     feature.properties = feature.properties || {};
   });
+
+  if (sourceCrs.code !== CRSManager.DEFAULT_CRS) {
+    featureCollection = CRSManager.reprojectGeoJSON(featureCollection, sourceCrs.code, CRSManager.DEFAULT_CRS);
+  }
+  featureCollection.crs = {
+    type: "name",
+    properties: {
+      name: CRSManager.DEFAULT_CRS,
+    },
+  };
 
   return featureCollection;
 }
@@ -270,6 +281,282 @@ function dataURLToBlob(dataUrl) {
   }
 
   return new Blob([bytes], { type: mimeType });
+}
+
+function getGeoTiffApi() {
+  return window.GeoTIFF || window.geotiff || null;
+}
+
+function getRasterLatLngBounds(transform) {
+  const corners = [
+    transform.unprojectRasterPoint(transform.extent.minX, transform.extent.minY),
+    transform.unprojectRasterPoint(transform.extent.minX, transform.extent.maxY),
+    transform.unprojectRasterPoint(transform.extent.maxX, transform.extent.minY),
+    transform.unprojectRasterPoint(transform.extent.maxX, transform.extent.maxY),
+  ];
+  return L.latLngBounds(corners.map((corner) => L.latLng(corner.lat, corner.lng)));
+}
+
+function normalizeRasterWindow(left, top, right, bottom, width, height) {
+  const xMin = Math.max(0, Math.min(width, Math.floor(Math.min(left, right))));
+  const xMax = Math.max(0, Math.min(width, Math.ceil(Math.max(left, right))));
+  const yMin = Math.max(0, Math.min(height, Math.floor(Math.min(top, bottom))));
+  const yMax = Math.max(0, Math.min(height, Math.ceil(Math.max(top, bottom))));
+  if (xMax <= xMin || yMax <= yMin) {
+    return null;
+  }
+  return [xMin, yMin, xMax, yMax];
+}
+
+function isRasterNoData(value, noData) {
+  if (value == null || Number.isNaN(value)) {
+    return true;
+  }
+  return noData !== null && noData !== "" && Number(value) === Number(noData);
+}
+
+function applyRasterTone(value, brightness, contrast) {
+  const contrastFactor = (259 * (Number(contrast) + 255)) / (255 * (259 - Number(contrast)));
+  const adjusted = contrastFactor * (value - 128) + 128 + Number(brightness || 0);
+  return Math.max(0, Math.min(255, Math.round(adjusted)));
+}
+
+function getRasterStyleBreakIndex(value, styleConfig) {
+  if (styleConfig.classification === "quantile" && styleConfig.quantileBreaks?.length) {
+    return styleConfig.quantileBreaks.findIndex((currentBreak, index) => {
+      if (index === styleConfig.quantileBreaks.length - 1) {
+        return value >= currentBreak.min && value <= currentBreak.max;
+      }
+      return value >= currentBreak.min && value < currentBreak.max;
+    });
+  }
+
+  const classCount = Math.max(1, Number(styleConfig.classCount) || 5);
+  const ratio = Math.min(Math.max((value - styleConfig.min) / ((styleConfig.max - styleConfig.min) || 1), 0), 1);
+  return Math.min(classCount - 1, Math.floor(ratio * classCount));
+}
+
+function colorizeRasterValue(value, styleConfig) {
+  if (isRasterNoData(value, styleConfig.noData)) {
+    return [0, 0, 0, 0];
+  }
+
+  const opacity = Math.round(Math.min(Math.max(Number(styleConfig.opacity) || 0.85, 0), 1) * 255);
+  const ratio = Math.min(Math.max((value - styleConfig.min) / ((styleConfig.max - styleConfig.min) || 1), 0), 1);
+
+  if (styleConfig.mode === "gray") {
+    const gray = applyRasterTone(ratio * 255, styleConfig.brightness, styleConfig.contrast);
+    return [gray, gray, gray, opacity];
+  }
+
+  const rampStops = getInterpolationRampStops(styleConfig.ramp || "terrain-glow");
+  const colorRatio = styleConfig.classification === "continuous"
+    ? ratio
+    : getRasterStyleBreakIndex(value, styleConfig) / Math.max(1, (Number(styleConfig.classCount) || 5) - 1);
+  const rgb = parseHexColor(interpolateColorStops(rampStops, colorRatio));
+  return [
+    applyRasterTone(rgb[0], styleConfig.brightness, styleConfig.contrast),
+    applyRasterTone(rgb[1], styleConfig.brightness, styleConfig.contrast),
+    applyRasterTone(rgb[2], styleConfig.brightness, styleConfig.contrast),
+    opacity,
+  ];
+}
+
+function computeRasterQuantileBreaks(values, classCount) {
+  const sorted = values.filter(Number.isFinite).sort((left, right) => left - right);
+  if (!sorted.length) {
+    return [];
+  }
+
+  const count = Math.max(1, Number(classCount) || 5);
+  const breaks = [];
+  for (let index = 0; index < count; index += 1) {
+    const lowerIndex = Math.floor((index * sorted.length) / count);
+    const upperIndex = Math.min(sorted.length - 1, Math.ceil(((index + 1) * sorted.length) / count) - 1);
+    breaks.push({
+      min: sorted[lowerIndex],
+      max: sorted[upperIndex],
+    });
+  }
+  return breaks;
+}
+
+async function computeRasterBandStats(image, bandIndex, noData) {
+  const width = image.getWidth();
+  const height = image.getHeight();
+  const sampleSize = 512;
+  const sampleWidth = Math.min(width, sampleSize);
+  const sampleHeight = Math.min(height, sampleSize);
+  const raster = await image.readRasters({
+    samples: [bandIndex],
+    width: sampleWidth,
+    height: sampleHeight,
+    interleave: true,
+  });
+
+  let min = Infinity;
+  let max = -Infinity;
+  const values = [];
+  for (let index = 0; index < raster.length; index += 1) {
+    const value = Number(raster[index]);
+    if (isRasterNoData(value, noData)) {
+      continue;
+    }
+    min = Math.min(min, value);
+    max = Math.max(max, value);
+    values.push(value);
+  }
+
+  return {
+    min: Number.isFinite(min) ? min : 0,
+    max: Number.isFinite(max) ? max : 1,
+    values,
+  };
+}
+
+function createGeoTiffTileLayer() {
+  return L.GridLayer.extend({
+    createTile() {
+      return document.createElement("canvas");
+    },
+  });
+}
+
+async function renderGeoTiffTile(layerRecord, coords, canvas) {
+  const transform = layerRecord.rasterTransform;
+  const image = layerRecord.rasterImage;
+  const styleConfig = layerRecord.rasterStyleConfig;
+  const tileSize = canvas.width;
+  const northWest = map.unproject([coords.x * tileSize, coords.y * tileSize], coords.z);
+  const southEast = map.unproject([(coords.x + 1) * tileSize, (coords.y + 1) * tileSize], coords.z);
+  const [leftX, topY] = transform.projectLatLngToRaster(northWest);
+  const [rightX, bottomY] = transform.projectLatLngToRaster(southEast);
+  const context = canvas.getContext("2d");
+  context.clearRect(0, 0, tileSize, tileSize);
+
+  const intersectMinX = Math.max(Math.min(leftX, rightX), transform.extent.minX);
+  const intersectMaxX = Math.min(Math.max(leftX, rightX), transform.extent.maxX);
+  const intersectMinY = Math.max(Math.min(topY, bottomY), transform.extent.minY);
+  const intersectMaxY = Math.min(Math.max(topY, bottomY), transform.extent.maxY);
+
+  if (intersectMaxX <= intersectMinX || intersectMaxY <= intersectMinY) {
+    return;
+  }
+
+  const [leftPixel, topPixel] = transform.rasterToPixel(intersectMinX, intersectMaxY);
+  const [rightPixel, bottomPixel] = transform.rasterToPixel(intersectMaxX, intersectMinY);
+  const window = normalizeRasterWindow(leftPixel, topPixel, rightPixel, bottomPixel, transform.width, transform.height);
+
+  if (!window) {
+    return;
+  }
+
+  const tileXScale = tileSize / (rightX - leftX || 1);
+  const tileYScale = tileSize / (bottomY - topY || 1);
+  const drawX = Math.max(0, Math.floor((intersectMinX - leftX) * tileXScale));
+  const drawY = Math.max(0, Math.floor((intersectMaxY - topY) * tileYScale));
+  const drawWidth = Math.max(1, Math.min(tileSize - drawX, Math.ceil((intersectMaxX - intersectMinX) * Math.abs(tileXScale))));
+  const drawHeight = Math.max(1, Math.min(tileSize - drawY, Math.ceil((intersectMaxY - intersectMinY) * Math.abs(tileYScale))));
+  const samples = [Math.max(0, Number(styleConfig.band || 1) - 1)];
+  const raster = await image.readRasters({
+    window,
+    samples,
+    width: drawWidth,
+    height: drawHeight,
+    interleave: true,
+    resampleMethod: "bilinear",
+  });
+
+  const imageData = context.createImageData(drawWidth, drawHeight);
+  for (let index = 0; index < drawWidth * drawHeight; index += 1) {
+    const rgba = colorizeRasterValue(Number(raster[index]), styleConfig);
+    const pixelIndex = index * 4;
+    imageData.data[pixelIndex] = rgba[0];
+    imageData.data[pixelIndex + 1] = rgba[1];
+    imageData.data[pixelIndex + 2] = rgba[2];
+    imageData.data[pixelIndex + 3] = rgba[3];
+  }
+
+  context.putImageData(imageData, drawX, drawY);
+}
+
+async function sampleRasterAtLatLng(layerRecord, latlng) {
+  const transform = layerRecord?.rasterTransform;
+  if (!transform || !layerRecord.rasterImage) {
+    return null;
+  }
+
+  const [x, y] = transform.projectLatLngToRaster(latlng);
+  const [pixelX, pixelY] = transform.rasterToPixel(x, y);
+  if (pixelX < 0 || pixelX >= transform.width || pixelY < 0 || pixelY >= transform.height) {
+    return null;
+  }
+
+  const bands = Array.from({ length: layerRecord.rasterMetadata.bandCount }, (_, index) => index);
+  const values = await layerRecord.rasterImage.readRasters({
+    window: [pixelX, pixelY, pixelX + 1, pixelY + 1],
+    samples: bands,
+    width: 1,
+    height: 1,
+    interleave: true,
+  });
+
+  return Array.from(values).map((value) => Number(value));
+}
+
+function formatRasterExtent(extent) {
+  return `${formatCompactNumber(extent.minX, 6)}, ${formatCompactNumber(extent.minY, 6)} to ${formatCompactNumber(extent.maxX, 6)}, ${formatCompactNumber(extent.maxY, 6)}`;
+}
+
+async function parseGeoTiffFile(file) {
+  const geoTiffApi = getGeoTiffApi();
+  if (!geoTiffApi?.fromArrayBuffer) {
+    throw new Error("GeoTIFF support library did not load. Check your network connection and reload the app.");
+  }
+
+  const arrayBuffer = await fileToArrayBuffer(file);
+  const tiff = await geoTiffApi.fromArrayBuffer(arrayBuffer);
+  const image = await tiff.getImage();
+  const transform = CRSManager.createRasterTransform(image);
+  const noData = image.getGDALNoData?.();
+  const stats = await computeRasterBandStats(image, 0, noData);
+  const styleConfig = createDefaultRasterStyleConfig({
+    min: stats.min,
+    max: stats.max,
+    noData,
+  });
+  styleConfig.quantileBreaks = computeRasterQuantileBreaks(stats.values, styleConfig.classCount);
+
+  const metadata = {
+    fileName: file.name,
+    width: image.getWidth(),
+    height: image.getHeight(),
+    bandCount: image.getSamplesPerPixel(),
+    crs: transform.crs.name,
+    crsCode: transform.crs.code,
+    epsg: Number(transform.crs.code.replace("EPSG:", "")) || null,
+    resolutionX: transform.resolution[0],
+    resolutionY: transform.resolution[1],
+    extent: transform.extent,
+    bounds: getRasterLatLngBounds(transform),
+    noData,
+    minValue: stats.min,
+    maxValue: stats.max,
+    sourceLayerName: file.name,
+    methodLabel: "GeoTIFF",
+    note: transform.crs.isSupported
+      ? ""
+      : "This CRS is not supported. Register a Proj4 definition before using it.",
+  };
+
+  return {
+    importKind: "geotiff",
+    sourceType: "GeoTIFF Raster",
+    image,
+    transform,
+    metadata,
+    styleConfig,
+  };
 }
 
 function createInterpolationOverlay(layerRecord, config) {
@@ -1244,16 +1531,19 @@ function updateInterpolationLegend() {
   }
 
   const metadata = visibleRasterLayer.rasterMetadata;
-  const rampStops = getInterpolationRampStops(metadata.ramp);
+  const styleConfig = visibleRasterLayer.rasterStyleConfig;
+  const rampStops = styleConfig?.mode === "gray"
+    ? getInterpolationRampStops("gray")
+    : getInterpolationRampStops(metadata.ramp || styleConfig?.ramp);
   const gradient = `linear-gradient(90deg, ${rampStops.join(", ")})`;
   container.hidden = false;
   container.innerHTML = `
-    <div class="map-legend-title">${escapeHtml(metadata.fieldLabel || metadata.field)}</div>
-    <div class="map-legend-subtitle">${escapeHtml(metadata.methodLabel)} from ${escapeHtml(metadata.sourceLayerName)}</div>
+    <div class="map-legend-title">${escapeHtml(metadata.fieldLabel || metadata.field || visibleRasterLayer.name)}</div>
+    <div class="map-legend-subtitle">${escapeHtml(metadata.methodLabel || visibleRasterLayer.sourceType)}${metadata.sourceLayerName ? ` from ${escapeHtml(metadata.sourceLayerName)}` : ""}</div>
     <div class="map-legend-gradient" style="background:${gradient}"></div>
     <div class="map-legend-range">
-      <span>${escapeHtml(formatCompactNumber(metadata.minValue))}</span>
-      <span>${escapeHtml(formatCompactNumber(metadata.maxValue))}</span>
+      <span>${escapeHtml(formatCompactNumber(styleConfig?.min ?? metadata.minValue))}</span>
+      <span>${escapeHtml(formatCompactNumber(styleConfig?.max ?? metadata.maxValue))}</span>
     </div>
   `;
 }
@@ -1285,6 +1575,9 @@ function getMapLayerByFeatureId(layerRecord, featureId) {
 
 function rebuildLayerFromData(layerRecord) {
   if (isRasterLayerRecord(layerRecord)) {
+    if (layerRecord.rasterTileLayer?.redraw) {
+      layerRecord.rasterTileLayer.redraw();
+    }
     if (layerRecord.isVisible !== false) {
       layerRecord.layerGroup.addTo(map);
     } else {
@@ -1353,6 +1646,8 @@ function createLayerRecord(geojson, fileName, sourceType) {
     isVisible: true,
     geojson: normalizedGeojson,
     fields: collectFieldNamesFromGeoJSON(normalizedGeojson),
+    crs: CRSManager.DEFAULT_CRS,
+    crsMetadata: CRSManager.getCrsMetadata(CRSManager.DEFAULT_CRS),
     styleConfig: createDefaultStyleConfig(color),
     interpolationConfig: createDefaultInterpolationConfig(),
     heatmapConfig: createDefaultHeatmapConfig(),
@@ -1392,6 +1687,8 @@ function createLargeCsvLayerRecord(csvDataset, fileName, sourceType) {
     geojson: previewGeojson,
     analysisGeojson,
     fields,
+    crs: CRSManager.DEFAULT_CRS,
+    crsMetadata: CRSManager.getCrsMetadata(CRSManager.DEFAULT_CRS),
     styleConfig: createDefaultStyleConfig(color),
     interpolationConfig: createDefaultInterpolationConfig(),
     heatmapConfig: createDefaultHeatmapConfig(),
@@ -1438,6 +1735,8 @@ function createRasterLayerRecord(sourceLayerRecord, rasterResult) {
       features: [],
     },
     fields: [],
+    crs: CRSManager.DEFAULT_CRS,
+    crsMetadata: CRSManager.getCrsMetadata(CRSManager.DEFAULT_CRS),
     styleConfig: createDefaultStyleConfig(sourceLayerRecord?.color || "#43c2ff"),
     interpolationConfig: null,
     heatmapConfig: null,
@@ -1452,6 +1751,85 @@ function createRasterLayerRecord(sourceLayerRecord, rasterResult) {
     sourceLayerId: sourceLayerRecord?.id || "",
     isDerived: true,
   };
+}
+
+function createGeoTiffLayerRecord(rasterData, fileName, sourceType) {
+  const TileLayerClass = createGeoTiffTileLayer();
+  const tileLayer = new TileLayerClass({
+    tileSize: 256,
+    opacity: 1,
+    updateWhenIdle: true,
+    updateWhenZooming: false,
+    keepBuffer: 2,
+    interactive: true,
+    bounds: rasterData.metadata.bounds,
+  });
+  const layerGroup = L.featureGroup([tileLayer]);
+  const layerRecord = {
+    id: crypto.randomUUID(),
+    kind: "raster",
+    rasterKind: "geotiff",
+    name: fileName,
+    sourceType,
+    color: "#43c2ff",
+    isVisible: true,
+    geojson: {
+      type: "FeatureCollection",
+      features: [],
+    },
+    fields: [],
+    styleConfig: createDefaultStyleConfig("#43c2ff"),
+    rasterStyleConfig: rasterData.styleConfig,
+    interpolationConfig: null,
+    heatmapConfig: null,
+    filterConfig: createDefaultFilterConfig(),
+    interpolationOverlay: null,
+    interpolationObjectUrl: "",
+    layerGroup,
+    rasterTileLayer: tileLayer,
+    rasterImage: rasterData.image,
+    rasterTransform: rasterData.transform,
+    rasterMetadata: rasterData.metadata,
+    crs: rasterData.metadata.crsCode || CRSManager.DEFAULT_CRS,
+    crsMetadata: CRSManager.getCrsMetadata(rasterData.metadata.crsCode || CRSManager.DEFAULT_CRS),
+    featureCount: 1,
+    visibleFeatureCount: 1,
+    isDerived: false,
+  };
+
+  tileLayer.options.layerRecord = layerRecord;
+  tileLayer.createTile = function createTile(coords, done) {
+    const tile = document.createElement("canvas");
+    const tileSize = this.getTileSize();
+    tile.width = tileSize.x;
+    tile.height = tileSize.y;
+    renderGeoTiffTile(layerRecord, coords, tile)
+      .then(() => done(null, tile))
+      .catch((error) => {
+        console.error(error);
+        done(null, tile);
+      });
+    return tile;
+  };
+  tileLayer.on("click", async (event) => {
+    try {
+      const values = await sampleRasterAtLatLng(layerRecord, event.latlng);
+      if (!values) {
+        return;
+      }
+      const rows = values
+        .map((value, index) => `Band ${index + 1}: ${escapeHtml(formatCompactNumber(value, 6))}`)
+        .join("<br>");
+      L.popup()
+        .setLatLng(event.latlng)
+        .setContent(`<strong>${escapeHtml(layerRecord.name)}</strong><br>${rows}`)
+        .openOn(map);
+    } catch (error) {
+      updateStatus(`Could not sample raster: ${error.message}`, true);
+    }
+  });
+
+  return layerRecord;
 }
 
 function sanitizeGeoJSONForExport(geojson) {
@@ -1538,6 +1916,15 @@ async function parseSpatialFile(file) {
       data: await parseCsvInWorker(file),
       sourceType: "CSV",
       importKind: "csv-dataset",
+    };
+  }
+
+  if (extension === "tif" || extension === "tiff") {
+    const rasterData = await parseGeoTiffFile(file);
+    return {
+      data: rasterData,
+      sourceType: rasterData.sourceType,
+      importKind: "geotiff",
     };
   }
 
@@ -2107,7 +2494,9 @@ function addLayerRecord(layerRecord) {
     layerRecord.layerGroup.addTo(map);
   }
 
-  const bounds = getBoundsSafe(layerRecord.layerGroup);
+  const bounds = isRasterLayerRecord(layerRecord) && layerRecord.rasterMetadata?.bounds
+    ? layerRecord.rasterMetadata.bounds
+    : getBoundsSafe(layerRecord.layerGroup);
   if (bounds) {
     map.fitBounds(bounds, { padding: [30, 30] });
   }
@@ -2155,7 +2544,9 @@ function zoomToLayer(id) {
     return;
   }
 
-  const bounds = getBoundsSafe(layerRecord.layerGroup);
+  const bounds = isRasterLayerRecord(layerRecord) && layerRecord.rasterMetadata?.bounds
+    ? layerRecord.rasterMetadata.bounds
+    : getBoundsSafe(layerRecord.layerGroup);
   if (bounds) {
     map.fitBounds(bounds, { padding: [30, 30] });
   }
@@ -2242,6 +2633,11 @@ function runLayerCardAction(layerRecord, actionName, closeDetailsMenu = null) {
     return;
   }
 
+  if (actionName === "raster-style" && isRasterLayerRecord(layerRecord) && layerRecord.rasterKind === "geotiff") {
+    openRasterStyleModal(layerRecord.id);
+    return;
+  }
+
   if (actionName === "interpolate" && isVectorLayerRecord(layerRecord) && isInterpolationEligible(layerRecord)) {
     openInterpolationModal(layerRecord.id);
     return;
@@ -2277,6 +2673,7 @@ function openLayerContextMenu(event, layerRecord) {
 
   const canEdit = isEditableLayerRecord(layerRecord);
   const canStyle = isVectorLayerRecord(layerRecord);
+  const canRasterStyle = isRasterLayerRecord(layerRecord) && layerRecord.rasterKind === "geotiff";
   const canInterpolate = isVectorLayerRecord(layerRecord) && isInterpolationEligible(layerRecord);
   const canHeatmap = isVectorLayerRecord(layerRecord) && isHeatmapEligible(layerRecord);
   const isEditable = canEdit && layerRecord.id === activeEditableLayerId;
@@ -2289,6 +2686,7 @@ function openLayerContextMenu(event, layerRecord) {
     <button class="layer-context-action" type="button" data-layer-context-action="toggle-visibility">${isVisible ? "Hide layer" : "Show layer"}</button>
     ${canEdit ? `<button class="layer-context-action" type="button" data-layer-context-action="toggle-edit">${isEditable ? "Disable edit mode" : "Enable edit mode"}</button>` : ""}
     ${canStyle ? '<button class="layer-context-action accent-action" type="button" data-layer-context-action="style">Style</button>' : ""}
+    ${canRasterStyle ? '<button class="layer-context-action accent-action raster" type="button" data-layer-context-action="raster-style">Raster Style</button>' : ""}
     ${canInterpolate ? '<button class="layer-context-action accent-action interpolation" type="button" data-layer-context-action="interpolate">Interpolate</button>' : ""}
     ${canHeatmap ? '<button class="layer-context-action accent-action heatmap" type="button" data-layer-context-action="heatmap">Heatmap</button>' : ""}
     ${canEdit ? '<button class="layer-context-action accent-action" type="button" data-layer-context-action="filter">Filter</button>' : ""}
@@ -2326,6 +2724,7 @@ function renderLayerList() {
     const isEditable = isEditableLayerRecord(layerRecord) && layerRecord.id === activeEditableLayerId;
     const canEdit = isEditableLayerRecord(layerRecord);
     const canStyle = isVectorLayerRecord(layerRecord);
+    const canRasterStyle = isRasterLayerRecord(layerRecord) && layerRecord.rasterKind === "geotiff";
     const canInterpolate = isVectorLayerRecord(layerRecord) && isInterpolationEligible(layerRecord);
     const canHeatmap = isVectorLayerRecord(layerRecord) && isHeatmapEligible(layerRecord);
     const rasterMetadata = layerRecord.rasterMetadata;
@@ -2333,14 +2732,18 @@ function renderLayerList() {
       ? `${escapeHtml(layerRecord.sourceType)} • ${escapeHtml(rasterMetadata?.methodLabel || "Surface")}`
       : `${escapeHtml(layerRecord.sourceType)} • ${layerRecord.featureCount} feature(s)`;
     const secondaryMeta = isRasterLayerRecord(layerRecord)
-      ? `Source: ${escapeHtml(rasterMetadata?.sourceLayerName || "Derived layer")}`
+      ? layerRecord.rasterKind === "geotiff"
+        ? `${formatCompactNumber(rasterMetadata?.width, 0)} x ${formatCompactNumber(rasterMetadata?.height, 0)} • ${formatCompactNumber(rasterMetadata?.bandCount, 0)} band(s)`
+        : `Source: ${escapeHtml(rasterMetadata?.sourceLayerName || "Derived layer")}`
       : isLargeCsvLayerRecord(layerRecord)
         ? `${escapeHtml(getCsvDisplayLabel(layerRecord))} • ${formatCompactNumber(layerRecord.datasetStats?.analysisSampleCount || 0, 0)} analysis samples`
       : layerRecord.visibleFeatureCount === layerRecord.featureCount
         ? "All features visible"
         : `${layerRecord.visibleFeatureCount} visible after filter`;
     const tertiaryMeta = isRasterLayerRecord(layerRecord)
-      ? `${formatCompactNumber(rasterMetadata?.minValue)} to ${formatCompactNumber(rasterMetadata?.maxValue)}`
+      ? layerRecord.rasterKind === "geotiff"
+        ? `${escapeHtml(rasterMetadata?.crs || "Unknown CRS")} • ${formatCompactNumber(rasterMetadata?.minValue)} to ${formatCompactNumber(rasterMetadata?.maxValue)}`
+        : `${formatCompactNumber(rasterMetadata?.minValue)} to ${formatCompactNumber(rasterMetadata?.maxValue)}`
       : isLargeCsvLayerRecord(layerRecord)
         ? "Large-file mode: table editing and direct point edits are disabled"
       : isEditable
@@ -2356,7 +2759,7 @@ function renderLayerList() {
           </button>
         </div>
         <div class="layer-card-details">
-          <div class="layer-meta layer-meta-strong">${escapeHtml(layerRecord.sourceType)} • ${formatCompactNumber(layerRecord.featureCount, 0)} feature(s)</div>
+          <div class="layer-meta layer-meta-strong">${primaryMeta}</div>
           <div class="layer-meta">${secondaryMeta}</div>
           <div class="layer-meta">${escapeHtml(tertiaryMeta)}</div>
         </div>
@@ -2370,6 +2773,7 @@ function renderLayerList() {
             <div class="layer-menu" role="menu">
               <button class="layer-menu-action zoom" type="button" role="menuitem">Zoom</button>
               ${canStyle ? '<button class="layer-menu-action style accent-action" type="button" role="menuitem">Style</button>' : ""}
+              ${canRasterStyle ? '<button class="layer-menu-action raster-style accent-action" type="button" role="menuitem">Raster Style</button>' : ""}
               ${canInterpolate ? '<button class="layer-menu-action interpolation accent-action" type="button" role="menuitem">Interpolate</button>' : ""}
               ${canHeatmap ? '<button class="layer-menu-action heatmap accent-action" type="button" role="menuitem">Heatmap</button>' : ""}
               ${canEdit ? '<button class="layer-menu-action filter accent-action" type="button" role="menuitem">Filter</button>' : ""}
@@ -2387,6 +2791,7 @@ function renderLayerList() {
     const menuShell = wrapper.querySelector(".layer-menu-shell");
     const zoomButton = wrapper.querySelector(".zoom");
     const styleButton = wrapper.querySelector(".style");
+    const rasterStyleButton = wrapper.querySelector(".raster-style");
     const interpolationButton = wrapper.querySelector(".interpolation");
     const heatmapButton = wrapper.querySelector(".heatmap");
     const filterButton = wrapper.querySelector(".filter");
@@ -2406,6 +2811,7 @@ function renderLayerList() {
     wrapper.addEventListener("contextmenu", (event) => openLayerContextMenu(event, layerRecord));
     zoomButton.addEventListener("click", () => runLayerCardAction(layerRecord, "zoom", closeMenu));
     styleButton?.addEventListener("click", () => runLayerCardAction(layerRecord, "style", closeMenu));
+    rasterStyleButton?.addEventListener("click", () => runLayerCardAction(layerRecord, "raster-style", closeMenu));
     interpolationButton?.addEventListener("click", () => runLayerCardAction(layerRecord, "interpolate", closeMenu));
     heatmapButton?.addEventListener("click", () => runLayerCardAction(layerRecord, "heatmap", closeMenu));
     filterButton?.addEventListener("click", () => runLayerCardAction(layerRecord, "filter", closeMenu));
@@ -2441,4 +2847,3 @@ function getLayerFieldNames(layerRecord) {
 
   return Array.from(fieldSet).sort();
 }
-
