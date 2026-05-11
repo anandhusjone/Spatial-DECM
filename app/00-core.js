@@ -771,9 +771,6 @@ function initializeBrandLogo() {
     return;
   }
 
-  // Always use the inline hardcoded logo — never fetch from disk/repo.
-  // An external Logo.svg in the repository (e.g. on GitHub Pages) may carry
-  // a white background rect or opaque fill that breaks the frosted stage.
   const svgMarkup = INLINE_BRAND_LOGO;
 
   brandLogoShell.innerHTML = svgMarkup;
