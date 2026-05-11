@@ -375,25 +375,7 @@ body {
   color: var(--logo-stroke-strong);
 }
 
-.brand-logo-shell text {
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-
-.brand-logo-shell .logo-base {
-  fill: var(--logo-stroke-soft);
-  stroke: var(--logo-stroke-soft);
-  stroke-width: 1.7;
-  opacity: 1;
-}
-
-.brand-logo-shell .logo-overlay {
-  fill: var(--logo-stroke-strong);
-  stroke: var(--logo-stroke-strong);
-  stroke-width: 1.95;
-  opacity: 0.98;
-  filter: drop-shadow(0 0 9px var(--logo-glow));
-}
+/* .logo-base / .logo-overlay removed — logo is now a plain filled path */
 
 
 
