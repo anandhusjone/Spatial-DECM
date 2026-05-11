@@ -692,70 +692,39 @@ function runPendingEditToggleAnimations() {
 }
 
 const INLINE_BRAND_LOGO = `
-  <svg width="600" height="150" viewBox="0 0 600 150" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Spatial D.E.C.M logo">
-    <text
-      x="50%"
-      y="50%"
-      font-family="'Orbitron', sans-serif"
-      font-size="60"
-      font-weight="700"
-      text-anchor="middle"
-      dominant-baseline="middle"
-      fill="none"
-      stroke="currentColor"
-      stroke-width="1.7"
-      letter-spacing="5"
-    >
-      Spatial-D.E.C.M
-    </text>
-  </svg>
-`;
+<svg
+  viewBox="0 0 168.08105 17.656544"
+  xmlns="http://www.w3.org/2000/svg"
+  role="img"
+  aria-label="Spatial-D.E.C.M logo">
+  <g transform="translate(-345.00288,-151.11921)">
+    <path
+      fill="currentColor"
+      transform="matrix(0.26458333,0,0,0.26458333,304.14216,74.533795)"
+      d="m 163.70088,340.85676 q -2.53333,0 -4.66667,-1.26667 -2.06666,-1.26666 -3.33333,-3.33333 -1.26667,-2.13334 -1.26667,-4.66667 v -3.66667 h 8.80001 v 3.26667 q 0,0.33333 0.2,0.6 0.26666,0.2 0.6,0.2 h 28.73334 q 0.33334,0 0.53334,-0.2 0.26666,-0.26667 0.26666,-0.6 v -9.13334 q 0,-0.33333 -0.26666,-0.53333 -0.2,-0.2 -0.53334,-0.2 h -29.06668 q -2.53333,0 -4.66667,-1.26667 -2.06666,-1.26667 -3.33333,-3.33333 -1.26667,-2.13334 -1.26667,-4.73334 v -9.86667 q 0,-2.53334 1.26667,-4.6 1.26667,-2.13334 3.33333,-3.40001 2.13334,-1.26666 4.66667,-1.26666 h 29.46668 q 2.53334,0 4.60001,1.26666 2.13333,1.26667 3.4,3.40001 1.26667,2.06666 1.26667,4.6 v 3.66667 h -8.86668 v -3.26667 q 0,-0.33334 -0.26666,-0.53334 -0.2,-0.26666 -0.53334,-0.26666 h -28.73334 q -0.33334,0 -0.6,0.26666 -0.2,0.2 -0.2,0.53334 v 9.13334 q 0,0.33333 0.2,0.53333 0.26666,0.2 0.6,0.2 h 29.13334 q 2.53334,0 4.60001,1.26667 2.13333,1.26666 3.4,3.4 1.26667,2.06667 1.26667,4.66667 v 9.86667 q 0,2.53333 -1.26667,4.66667 -1.26667,2.06667 -3.4,3.33333 -2.06667,1.26667 -4.60001,1.26667 z m 51.86671,15.33334 v 0 -54.00003 h 30.06668 q 2.53334,0 4.6,1.26667 2.13334,1.26667 3.33334,3.33334 1.26667,2.06666 1.26667,4.6 v 20.26668 q 0,2.53333 -1.26667,4.6 -1.2,2.06667 -3.33334,3.33333 -2.06666,1.26667 -4.6,1.26667 h -21.33334 v 15.33334 z m 9.53334,-24.06668 h 20.20001 q 0.33333,0 0.53333,-0.2 0.26667,-0.26666 0.26667,-0.6 v -19.60001 q 0,-0.33333 -0.26667,-0.53333 -0.2,-0.26667 -0.53333,-0.26667 h -20.20001 q -0.33334,0 -0.6,0.26667 -0.2,0.2 -0.2,0.53333 v 19.60001 q 0,0.33334 0.2,0.6 0.26666,0.2 0.6,0.2 z m 49.79999,8.73334 q -2.53333,0 -4.66667,-1.26667 -2.06666,-1.26666 -3.33333,-3.33333 -1.2,-2.06667 -1.2,-4.6 v -14.53334 h 30.53335 v -5.40001 q 0,-0.33333 -0.26667,-0.53333 -0.2,-0.26667 -0.53333,-0.26667 h -29.73335 v -8.73334 h 30.06668 q 2.53334,0 4.6,1.26667 2.13334,1.26667 3.33334,3.33334 1.26667,2.06666 1.26667,4.6 v 29.46668 z m 0.33334,-8.73334 h 21.00001 v -7.13333 h -21.80001 v 6.33333 q 0,0.33334 0.2,0.6 0.26666,0.2 0.6,0.2 z m 52.00004,8.73334 q -2.53334,0 -4.6,-1.26667 -2.06667,-1.26666 -3.33334,-3.33333 -1.26667,-2.06667 -1.26667,-4.6 V 290.3234 h 8.73334 v 11.86667 h 15.06668 v 8.73334 h -15.06668 v 20.40001 q 0,0.33334 0.2,0.6 0.26667,0.2 0.6,0.2 h 14.26668 v 8.73334 z m 26.06672,0 v 0 -38.66669 h 8.73333 v 38.66669 z m 0,-42.53335 v 0 -8.80001 h 8.73333 v 8.80001 z m 29.33333,42.53335 q -2.53333,0 -4.66667,-1.26667 -2.06667,-1.26666 -3.33333,-3.33333 -1.2,-2.06667 -1.2,-4.6 v -14.53334 h 30.53335 v -5.40001 q 0,-0.33333 -0.26667,-0.53333 -0.2,-0.26667 -0.53333,-0.26667 h -29.73335 v -8.73334 h 30.06668 q 2.53333,0 4.6,1.26667 2.13334,1.26667 3.33334,3.33334 1.26666,2.06666 1.26666,4.6 v 29.46668 z m 0.33334,-8.73334 h 21.00001 v -7.13333 h -21.80002 v 6.33333 q 0,0.33334 0.20001,0.6 0.26666,0.2 0.6,0.2 z m 50.46674,8.73334 q -2.53333,0 -4.6,-1.26667 -2.06667,-1.26666 -3.33334,-3.33333 -1.26666,-2.06667 -1.26666,-4.6 v -42.20003 h 8.8 v 41.86669 q 0,0.33334 0.2,0.6 0.26667,0.2 0.6,0.2 h 7.40001 v 8.73334 z m 19.00003,-15.33334 v 0 -8.73334 h 27.26668 v 8.73334 z m 40.40004,15.33334 v -48.00002 h 38.66669 q 2.53333,0 4.66667,1.26666 2.13333,1.26667 3.4,3.40001 1.26667,2.06666 1.26667,4.6 v 29.46668 q 0,2.53333 -1.26667,4.66667 -1.26667,2.06667 -3.4,3.33333 -2.13334,1.26667 -4.66667,1.26667 z m 9.53334,-8.86667 h 28.73335 q 0.33333,0 0.6,-0.2 0.26666,-0.26667 0.26666,-0.6 v -28.66668 q 0,-0.33334 -0.26666,-0.53334 -0.26667,-0.26666 -0.6,-0.26666 h -28.73335 q -0.33334,0 -0.6,0.26666 -0.2,0.2 -0.2,0.53334 v 28.66668 q 0,0.33333 0.2,0.6 0.26666,0.2 0.6,0.2 z m 51.8,8.86667 v 0 -8.73334 h 8.73334 v 8.73334 z m 21.39994,0 v -48.00002 h 44.20002 v 8.86667 h -35.33335 v 10.66667 h 28.40001 v 8.93334 h -28.40001 v 10.66667 h 35.33335 v 8.86667 z m 56.80007,0 v 0 -8.73334 h 8.73334 v 8.73334 z m 30.53331,0 q -2.53334,0 -4.66667,-1.26667 -2.06667,-1.26666 -3.33334,-3.33333 -1.26666,-2.13334 -1.26666,-4.66667 v -29.46668 q 0,-2.53334 1.26666,-4.6 1.26667,-2.13334 3.33334,-3.40001 2.13333,-1.26666 4.66667,-1.26666 h 38.60002 v 8.86667 h -36.73336 q -1.06666,0 -1.73333,0.6 -0.6,0.6 -0.6,1.73333 v 25.60002 q 0,1.06666 0.6,1.73333 0.66667,0.6 1.73333,0.6 h 36.73336 v 8.86667 z m 51.40007,0 v 0 -8.73334 h 8.73334 v 8.73334 z m 21.26664,0 v -48.00002 h 9.66667 l 17.40001,20.73334 17.33334,-20.73334 h 9.73334 v 48.00002 h -8.86667 v -35.20002 l -18.20001,21.66668 -18.26668,-21.60001 v 35.13335 z"
+    />
+  </g>
+</svg>
+`
 
 function animateBrandLogo(shell) {
-  if (!shell) {
+  if (!shell || !canAnimate) {
     return;
   }
 
-  const svg = shell.querySelector("svg");
-  const baseText = svg?.querySelector(".logo-base");
-  const overlayText = svg?.querySelector(".logo-overlay");
-  if (!svg || !baseText || !overlayText) {
+  // Subtle breathing pulse on the path fill opacity
+  const path = shell.querySelector("path");
+  if (!path) {
     return;
   }
 
-  const totalLength =
-    typeof overlayText.getComputedTextLength === "function" ? overlayText.getComputedTextLength() : 900;
-  baseText.style.strokeDasharray = "none";
-  baseText.style.strokeDashoffset = "0";
-  overlayText.style.strokeDasharray = `${totalLength}`;
-  overlayText.style.strokeDashoffset = `${totalLength}`;
-  overlayText.style.opacity = "1";
-
-  if (!canAnimate) {
-    overlayText.style.strokeDashoffset = "0";
-    return;
-  }
-
-  anime.remove([overlayText, shell]);
-  anime.set(shell, {
-    opacity: 1,
-    scale: 1,
-  });
+  anime.remove([shell, path]);
   anime({
-    targets: overlayText,
-    strokeDashoffset: [totalLength, 0],
-    duration: 2200,
+    targets: path,
+    opacity: [0.82, 1, 0.82],
+    duration: 3200,
     easing: "easeInOutSine",
     loop: true,
-    loopDelay: 220,
-  });
-  anime({
-    targets: overlayText,
-    strokeOpacity: [0.35, 1],
-    duration: 2200,
-    easing: "easeInOutSine",
-    loop: true,
-    loopDelay: 220,
   });
   anime({
     targets: shell,
@@ -774,20 +743,6 @@ function initializeBrandLogo() {
   const svgMarkup = INLINE_BRAND_LOGO;
 
   brandLogoShell.innerHTML = svgMarkup;
-  const svg = brandLogoShell.querySelector("svg");
-  const logoText = svg?.querySelector("text");
-  if (svg && logoText) {
-    logoText.setAttribute("fill", "currentColor");
-    logoText.setAttribute("stroke", "currentColor");
-    logoText.setAttribute("stroke-width", "2");
-    logoText.classList.add("logo-base");
-
-    const overlayText = logoText.cloneNode(true);
-    overlayText.classList.remove("logo-base");
-    overlayText.classList.add("logo-overlay");
-    overlayText.setAttribute("stroke-width", "1.95");
-    svg.appendChild(overlayText);
-  }
   animateBrandLogo(brandLogoShell);
 }
 
