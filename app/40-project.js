@@ -1,7 +1,39 @@
-// ─── Project Workspace & Persistence (Phase 9) ───────────────────────────────
-// Owns: FSA workspace chooser, project serialize/save/open/restore,
-//       dirty-state tracking, beforeunload guard, fallback import/export,
-//       project bar UI rendering, compatibility detection.
+// ─── Project Workspace & Persistence ─────────────────────────────────────────
+//
+// Workflow
+// ────────
+// NEW PROJECT
+//   newProject()
+//     → Confirms if dirty / layers exist
+//     → Clears all layers and state
+//     → Resets projectState to clean slate
+//     → Renders project bar in "unsaved" state
+//
+// SAVE PROJECT  (Ctrl+S or Save button)
+//   saveProject()
+//     Case A — FSA workspace already open:
+//       → Re-verify write permission
+//       → Write layer GeoJSON files + project.sdecm manifest to the folder
+//       → Clear dirty flag, update "last saved" timestamp
+//     Case B — No workspace yet (first save):
+//       → Calls saveProjectAs() to pick a folder first
+//
+// SAVE AS  (always picks a new folder / destination)
+//   saveProjectAs()
+//     FSA supported  → showDirectoryPicker → saveProjectToDirectory
+//     FSA not supported → saveProjectAsFallback (download .sdecm bundle)
+//
+// OPEN PROJECT
+//   openProject()
+//     FSA supported  → showDirectoryPicker → openProjectFromDirectory
+//     FSA not supported → trigger hidden file input → openProjectFromFile
+//
+// REOPEN WORKSPACE  (FSA only — after a page reload)
+//   reopenWorkspace()
+//     → Re-requests permission on the stored directoryHandle
+//     → Falls back to openProject() if the handle is gone
+//
+// ─────────────────────────────────────────────────────────────────────────────
 
 const PROJECT_MANIFEST_FILENAME = "project.sdecm";
 const PROJECT_VERSION = 1;
@@ -13,11 +45,12 @@ const projectState = {
   directoryHandle: null,   // FileSystemDirectoryHandle (FSA only)
   isDirty: false,
   lastSavedAt: null,       // ISO string
-  hasWorkspace: false,     // true once a directory is chosen
+  hasWorkspace: false,     // true once a directory is chosen or a bundle is loaded
+  projectName: "",         // set on first save; shown in project bar
 };
 
-// Expose a callback hook. Existing modules call this after mutations.
-// 40-project.js assigns it once initializeProject() runs.
+// Global dirty hook — existing modules call onProjectDirty() after mutations.
+// Assigned once initializeProject() runs.
 let onProjectDirty = null;
 
 // ─── FSA detection ────────────────────────────────────────────────────────────
@@ -29,16 +62,56 @@ function isFsaSupported() {
 // ─── Dirty tracking ───────────────────────────────────────────────────────────
 
 function markProjectDirty() {
-  if (!projectState.hasWorkspace) {
-    return;
-  }
   projectState.isDirty = true;
-  updateProjectSaveButton();
+  updateProjectBar();
+  scheduleAutoSave();
 }
 
 function clearProjectDirty() {
   projectState.isDirty = false;
-  updateProjectSaveButton();
+  updateProjectBar();
+}
+
+// ─── Auto-save ────────────────────────────────────────────────────────────────
+// Auto-save is only active when an FSA directory is open (so we have a known
+// save destination). It debounces writes: after every dirty mutation, a 5-second
+// timer is (re)started. If another mutation arrives before the timer fires, the
+// clock resets. This prevents hammering the file system during rapid edits.
+
+const AUTO_SAVE_DELAY_MS = 5_000;
+let _autoSaveTimer = null;
+let _autoSaveEnabled = false;
+
+function isAutoSaveAvailable() {
+  return !!(projectState.hasWorkspace && projectState.directoryHandle);
+}
+
+function toggleAutoSave() {
+  _autoSaveEnabled = !_autoSaveEnabled;
+  updateProjectBar();
+  if (_autoSaveEnabled && projectState.isDirty) {
+    scheduleAutoSave();
+  } else if (!_autoSaveEnabled) {
+    clearTimeout(_autoSaveTimer);
+    _autoSaveTimer = null;
+  }
+}
+
+function scheduleAutoSave() {
+  if (!_autoSaveEnabled || !isAutoSaveAvailable()) return;
+  clearTimeout(_autoSaveTimer);
+  _autoSaveTimer = setTimeout(async () => {
+    _autoSaveTimer = null;
+    if (!projectState.isDirty || !isAutoSaveAvailable()) return;
+    try {
+      const permission = await projectState.directoryHandle.requestPermission({ mode: "readwrite" });
+      if (permission === "granted") {
+        await saveProjectToDirectory(projectState.directoryHandle);
+      }
+    } catch (_) {
+      // Silent fail for auto-save — do not interrupt the user
+    }
+  }, AUTO_SAVE_DELAY_MS);
 }
 
 // ─── Serialization ────────────────────────────────────────────────────────────
@@ -64,11 +137,13 @@ function buildLayerManifestEntry(layerRecord, fileName) {
     id: layerRecord.id,
     name: layerRecord.name,
     color: layerRecord.color,
+    geometryKind: getLayerGeometryKind(layerRecord),
     isVisible: layerRecord.isVisible !== false,
     sourceType: layerRecord.sourceType || "GeoJSON",
     fileName,
     fields: layerRecord.fields || [],
     styleConfig: layerRecord.styleConfig || null,
+    labelConfig: layerRecord.labelConfig || null,
     filterConfig: layerRecord.filterConfig || null,
     interpolationConfig: layerRecord.interpolationConfig || null,
     heatmapConfig: layerRecord.heatmapConfig || null,
@@ -97,6 +172,7 @@ function serializeProject() {
   return {
     version: PROJECT_VERSION,
     savedAt: new Date().toISOString(),
+    projectName: projectState.projectName || "",
     activeEditableLayerId: activeEditableLayerId || "",
     themePreference: localStorage.getItem(THEME_STORAGE_KEY) || "system",
     calculatorExpressions: Array.isArray(calculatorExpressions) ? calculatorExpressions : [],
@@ -104,7 +180,7 @@ function serializeProject() {
   };
 }
 
-// ─── FSA save ─────────────────────────────────────────────────────────────────
+// ─── FSA write helpers ────────────────────────────────────────────────────────
 
 async function writeTextToDirectory(directoryHandle, fileName, text) {
   const fileHandle = await directoryHandle.getFileHandle(fileName, { create: true });
@@ -115,19 +191,15 @@ async function writeTextToDirectory(directoryHandle, fileName, text) {
 
 async function saveProjectToDirectory(directoryHandle) {
   const manifest = serializeProject();
-
-  // Write each vector layer as a GeoJSON file
   const vectorLayers = loadedLayers.filter(
     (lr) => !isRasterLayerRecord(lr) && !isLargeCsvLayerRecord(lr)
   );
 
   for (const lr of vectorLayers) {
-    const fileName = buildLayerFileName(lr);
-    const geojsonText = serializeLayerToGeoJSON(lr);
-    await writeTextToDirectory(directoryHandle, fileName, geojsonText);
+    await writeTextToDirectory(directoryHandle, buildLayerFileName(lr), serializeLayerToGeoJSON(lr));
   }
 
-  // Write the manifest last
+  // Write manifest last so an interrupted save does not leave a stale manifest
   await writeTextToDirectory(
     directoryHandle,
     PROJECT_MANIFEST_FILENAME,
@@ -139,57 +211,76 @@ async function saveProjectToDirectory(directoryHandle) {
   updateStatus(`Project saved — ${vectorLayers.length} layer(s) written.`);
 }
 
-// ─── Fallback save (download .sdecm bundle) ───────────────────────────────────
+// ─── Fallback save: download .sdecm bundle ────────────────────────────────────
 
 function saveProjectAsFallback() {
   const manifest = serializeProject();
-
-  // Embed GeoJSON inline for the fallback bundle
   const vectorLayers = loadedLayers.filter(
     (lr) => !isRasterLayerRecord(lr) && !isLargeCsvLayerRecord(lr)
   );
 
-  const bundle = {
-    ...manifest,
-    _bundle: true,
-    layerData: {},
-  };
-
+  const bundle = { ...manifest, _bundle: true, layerData: {} };
   vectorLayers.forEach((lr) => {
-    const fileName = buildLayerFileName(lr);
-    bundle.layerData[fileName] = sanitizeGeoJSONForExport(lr.geojson);
+    bundle.layerData[buildLayerFileName(lr)] = sanitizeGeoJSONForExport(lr.geojson);
   });
 
-  const blob = new Blob([JSON.stringify(bundle, null, 2)], {
-    type: "application/json",
-  });
+  const blob = new Blob([JSON.stringify(bundle, null, 2)], { type: "application/json" });
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = url;
   anchor.download = PROJECT_MANIFEST_FILENAME;
   anchor.click();
-  setTimeout(() => URL.revokeObjectURL(url), 10000);
+  setTimeout(() => URL.revokeObjectURL(url), 10_000);
 
   projectState.lastSavedAt = manifest.savedAt;
   clearProjectDirty();
   updateStatus(`Project downloaded as ${PROJECT_MANIFEST_FILENAME}.`);
 }
 
-// ─── Public: Save Project ─────────────────────────────────────────────────────
+// ─── NEW PROJECT ──────────────────────────────────────────────────────────────
+
+function newProject() {
+  if (projectState.isDirty) {
+    if (!window.confirm("You have unsaved changes. Start a new project and discard them?")) return;
+  } else if (loadedLayers.length > 0) {
+    if (!window.confirm("Start a new project? Your current layers will be cleared.")) return;
+  }
+
+  _clearAllLayers();
+
+  projectState.directoryHandle = null;
+  projectState.isDirty = false;
+  projectState.lastSavedAt = null;
+  projectState.hasWorkspace = false;
+  projectState.projectName = "";
+  localStorage.removeItem(PROJECT_HANDLE_AVAILABLE_KEY);
+  _autoSaveEnabled = false;
+  clearTimeout(_autoSaveTimer);
+  _autoSaveTimer = null;
+
+  setEmptyState();
+  updateProjectBar();
+  updateStatus("New project started.");
+}
+
+// ─── SAVE PROJECT ─────────────────────────────────────────────────────────────
+// Saves into the already-open FSA folder.
+// If no folder is open, delegates to Save As.
 
 async function saveProject() {
   if (!projectState.hasWorkspace || !projectState.directoryHandle) {
+    // First save: ask for a project name before picking the folder
+    const name = window.prompt("Enter a project name:", projectState.projectName || "My Project");
+    if (name === null) return; // user cancelled
+    projectState.projectName = name.trim() || "My Project";
     await saveProjectAs();
     return;
   }
 
   try {
-    // Re-verify permission before writing
-    const permission = await projectState.directoryHandle.requestPermission({
-      mode: "readwrite",
-    });
+    const permission = await projectState.directoryHandle.requestPermission({ mode: "readwrite" });
     if (permission !== "granted") {
-      updateStatus("Write permission to the workspace was denied.", true);
+      updateStatus("Write permission denied. Try Save As to pick a new folder.", true);
       return;
     }
     await saveProjectToDirectory(projectState.directoryHandle);
@@ -198,7 +289,8 @@ async function saveProject() {
   }
 }
 
-// ─── Public: Save Project As ──────────────────────────────────────────────────
+// ─── SAVE AS ──────────────────────────────────────────────────────────────────
+// Always prompts for a destination regardless of current workspace state.
 
 async function saveProjectAs() {
   if (!isFsaSupported()) {
@@ -212,7 +304,7 @@ async function saveProjectAs() {
     projectState.hasWorkspace = true;
     localStorage.setItem(PROJECT_HANDLE_AVAILABLE_KEY, "1");
     await saveProjectToDirectory(directoryHandle);
-    renderProjectBar();
+    updateProjectBar();
   } catch (error) {
     if (error.name !== "AbortError") {
       updateStatus(`Save As failed: ${error.message}`, true);
@@ -220,26 +312,138 @@ async function saveProjectAs() {
   }
 }
 
-// ─── Project restore helpers ──────────────────────────────────────────────────
+// ─── OPEN PROJECT ─────────────────────────────────────────────────────────────
+
+async function openProject() {
+  if (projectState.isDirty) {
+    if (!window.confirm("You have unsaved changes. Discard them and open a different project?")) return;
+  }
+
+  if (!isFsaSupported()) {
+    document.getElementById("project-open-file")?.click();
+    return;
+  }
+
+  try {
+    const directoryHandle = await window.showDirectoryPicker({ mode: "readwrite" });
+    await openProjectFromDirectory(directoryHandle);
+  } catch (error) {
+    if (error.name !== "AbortError") {
+      updateStatus(`Open failed: ${error.message}`, true);
+    }
+  }
+}
+
+// ─── REOPEN WORKSPACE (FSA only) ─────────────────────────────────────────────
+// Useful after a page reload when the browser still holds the handle
+// but permission needs to be re-granted.
+
+async function reopenWorkspace() {
+  if (!isFsaSupported()) {
+    updateStatus("Workspace reopen requires a Chromium-based browser.", true);
+    return;
+  }
+
+  if (!projectState.directoryHandle) {
+    await openProject();
+    return;
+  }
+
+  try {
+    const permission = await projectState.directoryHandle.requestPermission({ mode: "readwrite" });
+    if (permission === "granted") {
+      await openProjectFromDirectory(projectState.directoryHandle);
+    } else {
+      updateStatus("Permission denied. Use Open to pick the folder again.", true);
+    }
+  } catch (error) {
+    updateStatus(`Reopen failed: ${error.message}`, true);
+  }
+}
+
+// ─── Open from FSA directory ──────────────────────────────────────────────────
+
+async function openProjectFromDirectory(directoryHandle) {
+  let manifest;
+  try {
+    const fileHandle = await directoryHandle.getFileHandle(PROJECT_MANIFEST_FILENAME);
+    manifest = JSON.parse(await (await fileHandle.getFile()).text());
+  } catch (_) {
+    updateStatus(`No ${PROJECT_MANIFEST_FILENAME} found in the selected folder.`, true);
+    return;
+  }
+
+  if (manifest.version !== PROJECT_VERSION) {
+    updateStatus(
+      `Project version ${manifest.version} may not be fully compatible (expected ${PROJECT_VERSION}).`,
+      true
+    );
+  }
+
+  async function resolveGeojson(fileName) {
+    const fh = await directoryHandle.getFileHandle(fileName);
+    return JSON.parse(await (await fh.getFile()).text());
+  }
+
+  try {
+    await restoreProjectFromManifest(manifest, resolveGeojson);
+    projectState.directoryHandle = directoryHandle;
+    projectState.hasWorkspace = true;
+    projectState.lastSavedAt = manifest.savedAt || null;
+    projectState.projectName = manifest.projectName || "";
+    clearProjectDirty();
+    localStorage.setItem(PROJECT_HANDLE_AVAILABLE_KEY, "1");
+    updateProjectBar();
+    updateStatus(`Project opened — ${loadedLayers.length} layer(s) restored.`);
+  } catch (error) {
+    updateStatus(`Project restore failed: ${error.message}`, true);
+  }
+}
+
+// ─── Open from .sdecm bundle file (fallback browsers) ────────────────────────
+
+async function openProjectFromFile(file) {
+  if (!file) return;
+
+  let bundle;
+  try {
+    bundle = JSON.parse(await file.text());
+  } catch (_) {
+    updateStatus("Could not parse the project file.", true);
+    return;
+  }
+
+  if (bundle.version !== PROJECT_VERSION) {
+    updateStatus(`Project version ${bundle.version} may not be fully compatible.`, true);
+  }
+
+  const layerData = bundle._bundle ? (bundle.layerData || {}) : {};
+
+  async function resolveGeojson(fileName) {
+    if (layerData[fileName]) return layerData[fileName];
+    throw new Error(`Layer file "${fileName}" not found in bundle.`);
+  }
+
+  try {
+    await restoreProjectFromManifest(bundle, resolveGeojson);
+    // Fallback: no directory handle — Save will redirect to Save As / Download
+    projectState.directoryHandle = null;
+    projectState.hasWorkspace = true;
+    projectState.lastSavedAt = bundle.savedAt || null;
+    projectState.projectName = bundle.projectName || "";
+    clearProjectDirty();
+    updateProjectBar();
+    updateStatus(`Project opened — ${loadedLayers.length} layer(s) restored.`);
+  } catch (error) {
+    updateStatus(`Project restore failed: ${error.message}`, true);
+  }
+}
+
+// ─── Restore from manifest ────────────────────────────────────────────────────
 
 async function restoreProjectFromManifest(manifest, resolveGeojson) {
-  // Resolve geojson for each layer entry using the provided resolver
-  const layerEntries = Array.isArray(manifest.layers) ? manifest.layers : [];
+  _clearAllLayers();
 
-  // Clear current state first
-  loadedLayers.splice(0).forEach((lr) => {
-    disposeLayerResources(lr);
-    map.removeLayer(lr.layerGroup);
-  });
-  activeEditableLayerId = "";
-  selectedFeatureContext = null;
-  drawWorkspace.clearLayers();
-  renderLayerList();
-  renderEditableLayerOptions();
-  renderAttributeTable();
-  updateInterpolationLegend();
-
-  // Restore calculator expressions
   if (Array.isArray(manifest.calculatorExpressions)) {
     localStorage.setItem(
       CALCULATOR_SAVED_EXPRESSIONS_KEY,
@@ -247,28 +451,25 @@ async function restoreProjectFromManifest(manifest, resolveGeojson) {
     );
   }
 
-  // Restore theme
   if (manifest.themePreference) {
     localStorage.setItem(THEME_STORAGE_KEY, manifest.themePreference);
     applyTheme(manifest.themePreference);
   }
 
-  // Restore layers in order
-  for (const entry of layerEntries) {
+  for (const entry of (manifest.layers || [])) {
     let geojson;
     try {
       geojson = await resolveGeojson(entry.fileName);
     } catch (_) {
-      updateStatus(`Could not load layer file ${entry.fileName} — skipped.`, true);
+      updateStatus(`Could not load layer file "${entry.fileName}" — skipped.`, true);
       continue;
     }
 
-    if (!geojson || !Array.isArray(geojson.features)) {
-      continue;
-    }
+    if (!geojson || !Array.isArray(geojson.features)) continue;
 
     const color = entry.color || palette[layerCount % palette.length];
-    const normalizedGeojson = normalizeGeoJSON(geojson);
+    const normalized = normalizeGeoJSON(geojson);
+    const inferredKind = inferVectorGeometryKind(normalized);
 
     const lr = {
       id: entry.id || crypto.randomUUID(),
@@ -276,10 +477,12 @@ async function restoreProjectFromManifest(manifest, resolveGeojson) {
       name: entry.name,
       sourceType: entry.sourceType || "GeoJSON",
       color,
+      geometryKind: normalizeVectorGeometryKind(entry.geometryKind || inferredKind, inferredKind),
       isVisible: entry.isVisible !== false,
-      geojson: normalizedGeojson,
-      fields: Array.isArray(entry.fields) ? entry.fields : collectFieldNamesFromGeoJSON(normalizedGeojson),
+      geojson: normalized,
+      fields: Array.isArray(entry.fields) ? entry.fields : collectFieldNamesFromGeoJSON(normalized),
       styleConfig: entry.styleConfig || createDefaultStyleConfig(color),
+      labelConfig: entry.labelConfig || createDefaultLabelConfig(),
       interpolationConfig: entry.interpolationConfig || createDefaultInterpolationConfig(),
       heatmapConfig: entry.heatmapConfig || createDefaultHeatmapConfig(),
       filterConfig: entry.filterConfig || createDefaultFilterConfig(),
@@ -293,16 +496,13 @@ async function restoreProjectFromManifest(manifest, resolveGeojson) {
     layerCount += 1;
     rebuildLayerFromData(lr);
     loadedLayers.push(lr);
-
-    if (lr.isVisible) {
-      lr.layerGroup.addTo(map);
-    }
+    if (lr.isVisible) lr.layerGroup.addTo(map);
   }
 
   // Restore active editable layer
-  const preferredEditId = manifest.activeEditableLayerId;
+  const preferred = manifest.activeEditableLayerId;
   const editCandidate =
-    loadedLayers.find((lr) => lr.id === preferredEditId && isEditableLayerRecord(lr)) ||
+    (preferred && loadedLayers.find((lr) => lr.id === preferred && isEditableLayerRecord(lr))) ||
     loadedLayers.find((lr) => isEditableLayerRecord(lr)) ||
     null;
 
@@ -311,14 +511,11 @@ async function restoreProjectFromManifest(manifest, resolveGeojson) {
     syncEditableWorkspace();
   }
 
-  // Fit map to all layers
-  const allLayerGroups = loadedLayers.filter((lr) => lr.isVisible).map((lr) => lr.layerGroup);
-  if (allLayerGroups.length) {
-    const combined = L.featureGroup(allLayerGroups);
-    const bounds = getBoundsSafe(combined);
-    if (bounds) {
-      map.fitBounds(bounds, { padding: [30, 30] });
-    }
+  // Fit map to restored layers
+  const visibleGroups = loadedLayers.filter((lr) => lr.isVisible).map((lr) => lr.layerGroup);
+  if (visibleGroups.length) {
+    const bounds = getBoundsSafe(L.featureGroup(visibleGroups));
+    if (bounds) map.fitBounds(bounds, { padding: [30, 30] });
   }
 
   renderLayerList();
@@ -328,294 +525,193 @@ async function restoreProjectFromManifest(manifest, resolveGeojson) {
   setEmptyState();
 }
 
-// ─── Public: Open Project (FSA) ───────────────────────────────────────────────
+// ─── Internal: clear all layers and transient state ──────────────────────────
 
-async function openProjectFromDirectory(directoryHandle) {
-  let manifestText;
-  try {
-    const manifestFile = await directoryHandle.getFileHandle(PROJECT_MANIFEST_FILENAME);
-    const file = await manifestFile.getFile();
-    manifestText = await file.text();
-  } catch (_) {
-    updateStatus(`No ${PROJECT_MANIFEST_FILENAME} found in the selected folder.`, true);
-    return;
-  }
-
-  let manifest;
-  try {
-    manifest = JSON.parse(manifestText);
-  } catch (_) {
-    updateStatus("Project file could not be parsed.", true);
-    return;
-  }
-
-  if (manifest.version !== PROJECT_VERSION) {
-    updateStatus(
-      `Project version ${manifest.version} may not be fully compatible (expected ${PROJECT_VERSION}).`,
-      true
-    );
-  }
-
-  async function resolveGeojson(fileName) {
-    const fileHandle = await directoryHandle.getFileHandle(fileName);
-    const file = await fileHandle.getFile();
-    const text = await file.text();
-    return JSON.parse(text);
-  }
-
-  try {
-    await restoreProjectFromManifest(manifest, resolveGeojson);
-    projectState.directoryHandle = directoryHandle;
-    projectState.hasWorkspace = true;
-    projectState.lastSavedAt = manifest.savedAt || null;
-    clearProjectDirty();
-    localStorage.setItem(PROJECT_HANDLE_AVAILABLE_KEY, "1");
-    renderProjectBar();
-    updateStatus(`Project opened — ${loadedLayers.length} layer(s) restored.`);
-  } catch (error) {
-    updateStatus(`Project restore failed: ${error.message}`, true);
-  }
-}
-
-async function openProject() {
-  if (!isFsaSupported()) {
-    // Fallback: trigger the hidden file input
-    const input = document.getElementById("project-open-file");
-    if (input) {
-      input.click();
-    }
-    return;
-  }
-
-  if (projectState.isDirty) {
-    if (!window.confirm("You have unsaved changes. Discard them and open a different project?")) {
-      return;
-    }
-  }
-
-  try {
-    const directoryHandle = await window.showDirectoryPicker({ mode: "readwrite" });
-    await openProjectFromDirectory(directoryHandle);
-  } catch (error) {
-    if (error.name !== "AbortError") {
-      updateStatus(`Open failed: ${error.message}`, true);
-    }
-  }
-}
-
-// ─── Fallback: Open from .sdecm file ─────────────────────────────────────────
-
-async function openProjectFromFile(file) {
-  if (!file) {
-    return;
-  }
-
-  let bundle;
-  try {
-    const text = await file.text();
-    bundle = JSON.parse(text);
-  } catch (_) {
-    updateStatus("Could not parse the project file.", true);
-    return;
-  }
-
-  if (bundle.version !== PROJECT_VERSION) {
-    updateStatus(
-      `Project version ${bundle.version} may not be fully compatible.`,
-      true
-    );
-  }
-
-  const layerData = bundle._bundle ? (bundle.layerData || {}) : {};
-
-  async function resolveGeojson(fileName) {
-    if (layerData[fileName]) {
-      return layerData[fileName];
-    }
-    throw new Error(`Layer file ${fileName} not found in bundle.`);
-  }
-
-  try {
-    await restoreProjectFromManifest(bundle, resolveGeojson);
-    // Fallback mode: no directory handle, but mark workspace present for UX
-    projectState.hasWorkspace = true;
-    projectState.lastSavedAt = bundle.savedAt || null;
-    clearProjectDirty();
-    renderProjectBar();
-    updateStatus(`Project opened — ${loadedLayers.length} layer(s) restored.`);
-  } catch (error) {
-    updateStatus(`Project restore failed: ${error.message}`, true);
-  }
-}
-
-// ─── Public: New Project ──────────────────────────────────────────────────────
-
-function newProject() {
-  if (projectState.isDirty || loadedLayers.length > 0) {
-    if (!window.confirm("Start a new project? All unsaved changes will be lost.")) {
-      return;
-    }
-  }
-
+function _clearAllLayers() {
   loadedLayers.splice(0).forEach((lr) => {
     disposeLayerResources(lr);
     map.removeLayer(lr.layerGroup);
   });
-
   activeEditableLayerId = "";
   selectedFeatureContext = null;
   drawWorkspace.clearLayers();
-  projectState.directoryHandle = null;
-  projectState.isDirty = false;
-  projectState.lastSavedAt = null;
-  projectState.hasWorkspace = false;
-  localStorage.removeItem(PROJECT_HANDLE_AVAILABLE_KEY);
-
   renderLayerList();
   renderEditableLayerOptions();
   renderAttributeTable();
   updateInterpolationLegend();
-  setEmptyState();
-  renderProjectBar();
-  updateStatus("New project started.");
 }
 
-// ─── Public: Reopen Workspace ─────────────────────────────────────────────────
+// ─── Keyboard shortcut: Ctrl/Cmd+S ───────────────────────────────────────────
 
-async function reopenWorkspace() {
-  if (!isFsaSupported()) {
-    updateStatus("Workspace reopen is only supported in Chromium-based browsers.", true);
-    return;
-  }
-
-  if (!projectState.directoryHandle) {
-    // Try to ask user to pick again since we cannot persist handles reliably
-    await openProject();
-    return;
-  }
-
-  try {
-    const permission = await projectState.directoryHandle.requestPermission({
-      mode: "readwrite",
-    });
-    if (permission === "granted") {
-      await openProjectFromDirectory(projectState.directoryHandle);
-    } else {
-      updateStatus("Workspace permission was denied. Try Open Project instead.", true);
+document.addEventListener("keydown", (event) => {
+  if ((event.ctrlKey || event.metaKey) && event.key === "s") {
+    if (loadedLayers.length > 0 || projectState.isDirty) {
+      event.preventDefault();
+      saveProject();
     }
-  } catch (error) {
-    updateStatus(`Reopen failed: ${error.message}`, true);
   }
-}
+});
 
-// ─── beforeunload guard ───────────────────────────────────────────────────────
+// ─── Beforeunload guard ───────────────────────────────────────────────────────
 
 window.addEventListener("beforeunload", (event) => {
   if (projectState.isDirty && projectState.hasWorkspace) {
     event.preventDefault();
-    // Most browsers show a generic dialog; returnValue triggers it
     event.returnValue = "";
   }
 });
 
 // ─── UI: Project bar ──────────────────────────────────────────────────────────
+//
+// Button states by context:
+//
+//   No workspace open
+//     New  |  Open  |  [Save — disabled]  |  Save As / Download
+//
+//   FSA folder open (dirty)
+//     New  |  Open  |  Save ●  |  Save As  |  Reopen
+//
+//   FSA folder open (clean)
+//     New  |  Open  |  Save  |  Save As  |  Reopen
+//
+//   Bundle loaded (no folder)
+//     New  |  Open  |  [Save — disabled]  |  Save As / Download
+//     + hint: "No folder linked — use Save As to keep changes"
 
-function renderProjectBar() {
+function updateProjectBar() {
   const bar = document.getElementById("project-bar");
   const compatNote = document.getElementById("project-compat-note");
-  if (!bar) {
-    return;
-  }
+  if (!bar) return;
 
   const fsaOk = isFsaSupported();
-  const hasDir = projectState.hasWorkspace && projectState.directoryHandle;
+  const hasFsaDir = !!(projectState.hasWorkspace && projectState.directoryHandle);
+  const hasBundleOnly = projectState.hasWorkspace && !projectState.directoryHandle;
+  const dirty = projectState.isDirty;
+  const canSaveDirect = hasFsaDir;
+  const hasLayers = loadedLayers.length > 0;
+
+  // "New" is only useful if there's something to clear
+  const canNew = hasLayers || dirty;
+
+  // "Save" is always available once there's layers or changes; first click prompts for name + folder
+  const canSave = hasLayers || dirty;
+
+  // "Save As" / "Download" only available after the project has been saved at least once
+  const canSaveAs = projectState.hasWorkspace;
+
   const savedLabel = projectState.lastSavedAt
-    ? `Last saved: ${new Date(projectState.lastSavedAt).toLocaleTimeString()}`
+    ? `Saved ${new Date(projectState.lastSavedAt).toLocaleTimeString()}`
+    : null;
+
+  const projectNameLabel = projectState.projectName
+    ? `<span class="project-name-label">${escapeHtml(projectState.projectName)}</span>`
     : "";
 
   bar.innerHTML = `
     <div class="project-actions">
-      <button id="project-new-btn" class="project-btn ghost-button" type="button" title="New project">
-        New
-      </button>
-      <button id="project-open-btn" class="project-btn ghost-button" type="button" title="Open project">
-        Open
-      </button>
+      <button
+        id="project-new-btn"
+        class="project-btn ghost-button"
+        type="button"
+        title="${canNew ? "Clear all layers and start a new project" : "Add layers or make changes to enable New"}"
+        ${!canNew ? "disabled" : ""}
+      >New</button>
+
+      <button
+        id="project-open-btn"
+        class="project-btn ghost-button"
+        type="button"
+        title="${fsaOk ? "Open a saved project folder" : "Open a .sdecm project file"}"
+      >Open</button>
+
       <button
         id="project-save-btn"
-        class="project-btn ghost-button${projectState.isDirty ? " project-btn--dirty" : ""}"
+        class="project-btn ghost-button${dirty ? " project-btn--dirty" : ""}"
         type="button"
-        title="Save project"
-        ${!projectState.hasWorkspace ? "disabled" : ""}
-      >
-        Save${projectState.isDirty ? " ●" : ""}
-      </button>
-      <button id="project-save-as-btn" class="project-btn ghost-button" type="button" title="Save project as…">
-        Save As
-      </button>
-      ${hasDir ? `<button id="project-reopen-btn" class="project-btn ghost-button" type="button" title="Reopen workspace after reload">Reopen</button>` : ""}
+        title="${canSaveDirect
+          ? `Save to current folder (Ctrl+S)${dirty ? " — unsaved changes" : ""}`
+          : canSave
+            ? "Choose a folder and save project (Ctrl+S)"
+            : "Add layers or make changes to save"}"
+        ${!canSave ? "disabled" : ""}
+        aria-label="Save project${dirty ? " — unsaved changes" : ""}"
+      >Save${dirty ? "&nbsp;●" : ""}</button>
+
+      <button
+        id="project-save-as-btn"
+        class="project-btn ghost-button"
+        type="button"
+        title="${canSaveAs
+          ? (fsaOk ? "Choose a different folder and save project" : "Download project as .sdecm file")
+          : "Save your project first to enable Save As"}"
+        ${!canSaveAs ? "disabled" : ""}
+      >${fsaOk ? "Save As" : "Download"}</button>
+
+      ${hasFsaDir ? `
+      <button
+        id="project-reopen-btn"
+        class="project-btn ghost-button project-btn--reopen"
+        type="button"
+        title="Re-grant folder access after a page refresh"
+      >Reopen</button>` : ""}
+
+      <button
+        id="project-autosave-btn"
+        class="project-btn ghost-button${_autoSaveEnabled && isAutoSaveAvailable() ? " project-btn--autosave-on" : isAutoSaveAvailable() ? " project-btn--autosave-off" : ""}"
+        type="button"
+        title="${isAutoSaveAvailable()
+          ? (_autoSaveEnabled ? "Auto-save ON — click to disable" : "Auto-save OFF — click to enable (saves 5 s after each change)")
+          : "Auto-save requires a saved project folder"}"
+        ${!isAutoSaveAvailable() ? "disabled" : ""}
+        aria-pressed="${_autoSaveEnabled && isAutoSaveAvailable()}"
+      >${_autoSaveEnabled && isAutoSaveAvailable() ? "Auto&#8209;save&nbsp;●" : "Auto&#8209;save"}</button>
     </div>
-    ${savedLabel ? `<p class="project-saved-label small-note">${escapeHtml(savedLabel)}</p>` : ""}
+
+    ${savedLabel || hasBundleOnly || projectState.projectName ? `
+    <p class="project-meta small-note">
+      ${projectNameLabel}
+      ${savedLabel ? `<span>${escapeHtml(savedLabel)}</span>` : ""}
+      ${hasBundleOnly ? `<span class="project-meta-hint">No folder linked — use Save As to keep changes</span>` : ""}
+    </p>` : ""}
   `;
 
-  if (compatNote) {
-    if (!fsaOk) {
-      compatNote.hidden = false;
-      compatNote.textContent =
-        "Your browser does not support the File System Access API. " +
-        "Use Save As to download a project bundle and Open to restore it.";
-    } else {
-      compatNote.hidden = true;
-    }
-  }
-
-  // Wire project buttons
   document.getElementById("project-new-btn")?.addEventListener("click", newProject);
   document.getElementById("project-open-btn")?.addEventListener("click", openProject);
   document.getElementById("project-save-btn")?.addEventListener("click", saveProject);
   document.getElementById("project-save-as-btn")?.addEventListener("click", saveProjectAs);
   document.getElementById("project-reopen-btn")?.addEventListener("click", reopenWorkspace);
+  document.getElementById("project-autosave-btn")?.addEventListener("click", toggleAutoSave);
+
+  if (compatNote) {
+    compatNote.hidden = fsaOk;
+    if (!fsaOk) {
+      compatNote.textContent =
+        "Your browser doesn't support folder access. " +
+        "Use Download to save a .sdecm bundle and Open to restore it.";
+    }
+  }
 }
 
-function updateProjectSaveButton() {
-  const btn = document.getElementById("project-save-btn");
-  if (!btn) {
-    return;
-  }
-
-  if (projectState.isDirty) {
-    btn.classList.add("project-btn--dirty");
-    btn.textContent = "Save ●";
-  } else {
-    btn.classList.remove("project-btn--dirty");
-    btn.textContent = "Save";
-  }
-
-  btn.disabled = !projectState.hasWorkspace;
+// Keep renderProjectBar as an alias so any existing call sites still work
+function renderProjectBar() {
+  updateProjectBar();
 }
 
 // ─── Initialization ───────────────────────────────────────────────────────────
 
 function initializeProject() {
-  // Assign the global dirty hook so existing modules can call it
   onProjectDirty = markProjectDirty;
 
-  renderProjectBar();
+  updateProjectBar();
 
-  // Wire the fallback file input (defined in index.html)
   const openFileInput = document.getElementById("project-open-file");
   if (openFileInput) {
     openFileInput.addEventListener("change", async (event) => {
       const file = event.target.files?.[0];
-      if (file) {
-        await openProjectFromFile(file);
-      }
-      // Reset input so the same file can be re-opened
+      if (file) await openProjectFromFile(file);
       openFileInput.value = "";
     });
   }
 }
 
-// Run immediately when this script loads (after 30-bootstrap.js)
 initializeProject();
-

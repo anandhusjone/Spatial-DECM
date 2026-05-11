@@ -1,17 +1,9 @@
 function cloneStyleConfig(styleConfig, fallbackColor = "#1db7a6") {
-  return {
-    mode: styleConfig?.mode || "single",
-    field: styleConfig?.field || "",
-    singleColor: styleConfig?.singleColor || fallbackColor,
-    categorized: {
-      valueColors: { ...(styleConfig?.categorized?.valueColors || {}) },
-    },
-    graduated: {
-      ramp: styleConfig?.graduated?.ramp || "teal-blue",
-      method: styleConfig?.graduated?.method || "equal",
-      classCount: Number(styleConfig?.graduated?.classCount || 5),
-    },
-  };
+  return VectorStyleManager.cloneStyleConfig(styleConfig, fallbackColor);
+}
+
+function cloneLabelConfig(labelConfig) {
+  return VectorStyleManager.cloneLabelConfig(labelConfig);
 }
 
 function cloneFilterConfig(filterConfig) {
@@ -27,9 +19,12 @@ function cloneFilterConfig(filterConfig) {
 
 function ensureSymbologyFieldOptions(layerRecord) {
   const fields = getLayerFieldNames(layerRecord);
-  symbologyFieldSelect.innerHTML = fields.length
+  const fieldOptions = fields.length
     ? fields.map((field) => `<option value="${escapeHtml(field)}">${escapeHtml(field)}</option>`).join("")
     : '<option value="">No fields available</option>';
+  symbologyFieldSelect.innerHTML = fieldOptions;
+  ruleStyleFieldSelect.innerHTML = fieldOptions;
+  labelFieldSelect.innerHTML = `<option value="">No label</option>${fields.map((field) => `<option value="${escapeHtml(field)}">${escapeHtml(field)}</option>`).join("")}`;
 }
 
 function renderCategorizedValueInputs(layerRecord, styleConfig) {
@@ -44,18 +39,36 @@ function renderCategorizedValueInputs(layerRecord, styleConfig) {
     return;
   }
 
+  const geometryKind = getLayerGeometryKind(layerRecord);
+
+  function makePreview(color) {
+    if (geometryKind === "line") {
+      return `<svg width="32" height="16" viewBox="0 0 32 16" xmlns="http://www.w3.org/2000/svg"><line x1="2" y1="8" x2="30" y2="8" stroke="${color}" stroke-width="3" stroke-linecap="round"/></svg>`;
+    }
+    if (geometryKind === "polygon") {
+      return `<svg width="28" height="20" viewBox="0 0 28 20" xmlns="http://www.w3.org/2000/svg"><rect x="2" y="2" width="24" height="16" rx="3" fill="${color}" fill-opacity="0.5" stroke="${color}" stroke-width="2"/></svg>`;
+    }
+    // point / default
+    return `<svg width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg"><circle cx="8" cy="8" r="6" fill="${color}" stroke="#fff" stroke-width="2"/></svg>`;
+  }
+
   categorizedValuesWrap.innerHTML = uniqueValues
     .map((value, index) => {
       const fallbackColor = palette[index % palette.length];
-      const currentColor = styleConfig.categorized.valueColors[value] || fallbackColor;
+      if (!styleConfig.categorized.valueColors[value]) {
+        styleConfig.categorized.valueColors[value] = fallbackColor;
+      }
+      const currentColor = styleConfig.categorized.valueColors[value];
       return `
-        <div class="rule-card categorized-row">
-          <div class="categorized-value-label">${escapeHtml(value)}</div>
+        <div class="cat-value-row">
+          <span class="cat-preview" data-category-value="${escapeHtml(value)}">${makePreview(currentColor)}</span>
+          <span class="cat-label">${escapeHtml(value)}</span>
           <input
-            class="dark-input color-input categorized-color-input"
+            class="dark-input color-input categorized-color-input cat-color-pick"
             type="color"
             data-category-value="${escapeHtml(value)}"
             value="${escapeHtml(currentColor)}"
+            title="${escapeHtml(value)}"
           />
         </div>
       `;
@@ -65,11 +78,11 @@ function renderCategorizedValueInputs(layerRecord, styleConfig) {
   categorizedValuesWrap.querySelectorAll(".categorized-color-input").forEach((input) => {
     input.addEventListener("input", () => {
       const activeLayer = getLayerRecordById(activeSymbologyLayerId);
-      if (!activeLayer) {
-        return;
-      }
-
+      if (!activeLayer) return;
       activeLayer.styleConfig.categorized.valueColors[input.dataset.categoryValue] = input.value;
+      // Update the inline SVG preview immediately
+      const preview = categorizedValuesWrap.querySelector(`.cat-preview[data-category-value="${CSS.escape(input.dataset.categoryValue)}"]`);
+      if (preview) preview.innerHTML = makePreview(input.value);
       rebuildLayerFromData(activeLayer);
     });
   });
@@ -114,12 +127,224 @@ function renderSymbologyPanels(layerRecord) {
     return;
   }
 
-  singleStylePanel.hidden = styleConfig.mode !== "single";
-  categorizedStylePanel.hidden = styleConfig.mode !== "categorized";
-  graduatedStylePanel.hidden = styleConfig.mode !== "graduated";
+  const geometryKind = getLayerGeometryKind(layerRecord);
+  const isPoint = geometryKind === "point" || geometryKind === "mixed" || geometryKind === "unknown";
+  const showAllGeometryPanels = geometryKind === "mixed" || geometryKind === "unknown";
+
+  // Show shape/size only for point layers
+  const quickShapeStack = document.getElementById("quick-shape-stack");
+  const quickSizeStack = document.getElementById("quick-size-stack");
+  if (quickShapeStack) quickShapeStack.hidden = !isPoint;
+  if (quickSizeStack) quickSizeStack.hidden = !isPoint;
+
+  if (labelPlacementSelect) {
+    labelPlacementSelect.closest(".field-stack").hidden = !(showAllGeometryPanels || geometryKind === "point");
+  }
+  if (labelLinePlacementSelect) {
+    labelLinePlacementSelect.closest(".field-stack").hidden = !(showAllGeometryPanels || geometryKind === "line");
+  }
+  if (labelPolygonPlacementSelect) {
+    labelPolygonPlacementSelect.closest(".field-stack").hidden = !(showAllGeometryPanels || geometryKind === "polygon");
+  }
+
+  const mode = styleConfig.mode;
+  singleStylePanel.hidden = mode !== "single";
+  if (symbologyFieldStack) {
+    symbologyFieldStack.hidden = mode === "single";
+  }
+  categorizedStylePanel.hidden = mode !== "categorized";
+  graduatedStylePanel.hidden = mode !== "graduated";
+  ruleStylePanel.hidden = mode !== "rule" && mode !== "rule-based";
 
   renderCategorizedValueInputs(layerRecord, styleConfig);
   renderGraduatedBreakPreview(layerRecord, styleConfig);
+  updateLabelOptionsVisibility();
+}
+
+function setSymbologyTab(activeTab) {
+  const showLabeling = activeTab === "labeling";
+  if (symbologyStylingPanel) {
+    symbologyStylingPanel.hidden = showLabeling;
+  }
+  if (symbologyLabelingPanel) {
+    symbologyLabelingPanel.hidden = !showLabeling;
+  }
+  if (symbologyStylingTab) {
+    symbologyStylingTab.classList.toggle("is-active", !showLabeling);
+    symbologyStylingTab.setAttribute("aria-selected", String(!showLabeling));
+  }
+  if (symbologyLabelingTab) {
+    symbologyLabelingTab.classList.toggle("is-active", showLabeling);
+    symbologyLabelingTab.setAttribute("aria-selected", String(showLabeling));
+  }
+}
+
+function updateLabelOptionsVisibility() {
+  if (labelOptionsWrap) {
+    labelOptionsWrap.hidden = !labelEnabledInput.checked;
+  }
+}
+
+function updateLabelControlsChanged() {
+  updateLabelOptionsVisibility();
+}
+
+function setAdvancedStyleControls(layerRecord) {
+  const styleConfig = layerRecord.styleConfig;
+  pointSymbolShapeSelect.value = styleConfig.point.shape;
+  pointSymbolSizeInput.value = String(styleConfig.point.size);
+  pointFillColorInput.value = styleConfig.point.fillColor;
+  pointStrokeColorInput.value = styleConfig.point.strokeColor;
+  pointStrokeWidthInput.value = String(styleConfig.point.strokeWidth);
+  pointOpacityInput.value = String(styleConfig.point.opacity);
+  pointIconUrlInput.value = styleConfig.point.iconUrl || "";
+  lineColorInput.value = styleConfig.line.color;
+  lineWidthInput.value = String(styleConfig.line.width);
+  lineOpacityInput.value = String(styleConfig.line.opacity);
+  lineDashStyleSelect.value = styleConfig.line.dashStyle;
+  lineDashPatternInput.value = styleConfig.line.dashPattern || "";
+  lineCapSelect.value = styleConfig.line.lineCap;
+  lineJoinSelect.value = styleConfig.line.lineJoin;
+  polygonFillColorInput.value = styleConfig.polygon.fillColor;
+  polygonFillOpacityInput.value = String(styleConfig.polygon.fillOpacity);
+  polygonStrokeColorInput.value = styleConfig.polygon.strokeColor;
+  polygonStrokeWidthInput.value = String(styleConfig.polygon.strokeWidth);
+  polygonStrokeOpacityInput.value = String(styleConfig.polygon.strokeOpacity);
+  polygonStrokeStyleSelect.value = styleConfig.polygon.strokeStyle;
+  polygonOutlineOnlyInput.checked = Boolean(styleConfig.polygon.outlineOnly);
+  const rule = styleConfig.rules?.[0] || {};
+  ruleStyleFieldSelect.value = rule.field || getLayerFieldNames(layerRecord)[0] || "";
+  ruleStyleOperatorSelect.value = rule.operator || "==";
+  ruleStyleValueInput.value = rule.value ?? "";
+  ruleStyleColorInput.value = rule.color || "#ffb454";
+
+  // Sync quick stroke controls from the geometry-specific sub-config
+  const kind = getLayerGeometryKind(layerRecord);
+  const qStrokeColor = kind === "line" ? styleConfig.line.color
+    : kind === "point" ? styleConfig.point.strokeColor
+    : styleConfig.polygon.strokeColor;
+  const qStrokeWidth = kind === "line" ? styleConfig.line.width
+    : kind === "point" ? styleConfig.point.strokeWidth
+    : styleConfig.polygon.strokeWidth;
+  ["single", "cat", "grad", "rule"].forEach((suffix) => {
+    const sc = document.getElementById(`quick-stroke-color-${suffix}`);
+    const sw = document.getElementById(`quick-stroke-width-${suffix}`);
+    if (sc) sc.value = qStrokeColor || "#ffffff";
+    if (sw) sw.value = String(qStrokeWidth ?? 2);
+  });
+}
+
+function setLabelControls(layerRecord) {
+  const labelConfig = layerRecord.labelConfig;
+  labelEnabledInput.checked = Boolean(labelConfig.enabled);
+  labelFieldSelect.value = labelConfig.field || "";
+  labelExpressionInput.value = labelConfig.expression || "";
+  labelFontFamilySelect.value = labelConfig.style.fontFamily;
+  labelFontSizeInput.value = String(labelConfig.style.fontSize);
+  labelColorInput.value = labelConfig.style.color;
+  labelOpacityInput.value = String(labelConfig.style.opacity);
+  labelHaloColorInput.value = labelConfig.style.haloColor;
+  labelHaloSizeInput.value = String(labelConfig.style.haloSize);
+  labelBackgroundColorInput.value = labelConfig.style.backgroundColor;
+  labelBorderColorInput.value = labelConfig.style.borderColor;
+  labelBorderRadiusInput.value = String(labelConfig.style.borderRadius);
+  labelPlacementSelect.value = labelConfig.placement;
+  labelLinePlacementSelect.value = labelConfig.linePlacement;
+  labelPolygonPlacementSelect.value = labelConfig.polygonPlacement;
+  labelOffsetXInput.value = String(labelConfig.offsetX);
+  labelOffsetYInput.value = String(labelConfig.offsetY);
+  labelRotationInput.value = String(labelConfig.rotation);
+  labelMinZoomInput.value = String(labelConfig.minZoom);
+  labelMaxZoomInput.value = String(labelConfig.maxZoom);
+  labelPriorityInput.value = String(labelConfig.priority);
+  labelBoldInput.checked = Boolean(labelConfig.style.bold);
+  labelItalicInput.checked = Boolean(labelConfig.style.italic);
+  labelUnderlineInput.checked = Boolean(labelConfig.style.underline);
+  labelShadowInput.checked = Boolean(labelConfig.style.shadow);
+  labelAvoidOverlapInput.checked = Boolean(labelConfig.avoidOverlap);
+  updateLabelOptionsVisibility();
+}
+
+function readAdvancedStyleControls(layerRecord) {
+  const styleConfig = layerRecord.styleConfig;
+  // Read quick stroke controls: find which mode panel is visible and pick its values
+  const mode = styleConfig.mode || "single";
+  const qSuffix = mode === "categorized" ? "cat" : mode === "graduated" ? "grad" : mode === "rule" || mode === "rule-based" ? "rule" : "single";
+  const qsc = document.getElementById(`quick-stroke-color-${qSuffix}`);
+  const qsw = document.getElementById(`quick-stroke-width-${qSuffix}`);
+  const quickStrokeColor = qsc ? qsc.value : null;
+  const quickStrokeWidth = qsw ? Number(qsw.value) : null;
+
+  styleConfig.point = {
+    shape: pointSymbolShapeSelect.value,
+    size: Number(pointSymbolSizeInput.value || 14),
+    fillColor: pointFillColorInput.value,
+    strokeColor: quickStrokeColor ?? pointStrokeColorInput.value,
+    strokeWidth: quickStrokeWidth ?? Number(pointStrokeWidthInput.value || 0),
+    opacity: Number(pointOpacityInput.value || 0.95),
+    iconUrl: pointIconUrlInput.value.trim(),
+  };
+  styleConfig.line = {
+    color: lineColorInput.value,
+    width: quickStrokeWidth ?? Number(lineWidthInput.value || 3),
+    opacity: Number(lineOpacityInput.value || 0.92),
+    dashStyle: lineDashStyleSelect.value,
+    dashPattern: lineDashPatternInput.value.trim(),
+    lineCap: lineCapSelect.value,
+    lineJoin: lineJoinSelect.value,
+  };
+  styleConfig.polygon = {
+    fillColor: polygonFillColorInput.value,
+    fillOpacity: Number(polygonFillOpacityInput.value || 0),
+    strokeColor: quickStrokeColor ?? polygonStrokeColorInput.value,
+    strokeWidth: quickStrokeWidth ?? Number(polygonStrokeWidthInput.value || 0),
+    strokeOpacity: Number(polygonStrokeOpacityInput.value || 0.92),
+    strokeStyle: polygonStrokeStyleSelect.value,
+    outlineOnly: polygonOutlineOnlyInput.checked,
+  };
+  styleConfig.rules = ruleStyleFieldSelect.value
+    ? [{
+        field: ruleStyleFieldSelect.value,
+        operator: ruleStyleOperatorSelect.value,
+        value: ruleStyleValueInput.value,
+        color: ruleStyleColorInput.value,
+      }]
+    : [];
+}
+
+function readLabelControls(layerRecord) {
+  layerRecord.labelConfig = {
+    enabled: labelEnabledInput.checked,
+    field: labelFieldSelect.value,
+    expression: labelExpressionInput.value.trim(),
+    placement: labelPlacementSelect.value,
+    linePlacement: labelLinePlacementSelect.value,
+    polygonPlacement: labelPolygonPlacementSelect.value,
+    offsetX: Number(labelOffsetXInput.value || 0),
+    offsetY: Number(labelOffsetYInput.value || 0),
+    rotation: Number(labelRotationInput.value || 0),
+    minZoom: Number(labelMinZoomInput.value || 0),
+    maxZoom: Number(labelMaxZoomInput.value || 22),
+    priority: Number(labelPriorityInput.value || 5),
+    avoidOverlap: labelAvoidOverlapInput.checked,
+    repeat: labelLinePlacementSelect.value === "repeated",
+    wrap: 24,
+    style: {
+      fontFamily: labelFontFamilySelect.value,
+      fontSize: Number(labelFontSizeInput.value || 12),
+      bold: labelBoldInput.checked,
+      italic: labelItalicInput.checked,
+      underline: labelUnderlineInput.checked,
+      color: labelColorInput.value,
+      opacity: Number(labelOpacityInput.value || 1),
+      haloColor: labelHaloColorInput.value,
+      haloSize: Number(labelHaloSizeInput.value || 0),
+      backgroundColor: labelBackgroundColorInput.value || "transparent",
+      borderColor: labelBorderColorInput.value || "transparent",
+      borderRadius: Number(labelBorderRadiusInput.value || 0),
+      shadow: labelShadowInput.checked,
+    },
+  };
 }
 
 function openSymbologyModal(layerId) {
@@ -130,7 +355,8 @@ function openSymbologyModal(layerId) {
 
   activeSymbologyLayerId = layerId;
   layerRecord.styleConfig = cloneStyleConfig(layerRecord.styleConfig, layerRecord.color);
-  symbologyLayerLabel.textContent = `Configure how ${layerRecord.name} should be drawn on the map.`;
+  layerRecord.labelConfig = cloneLabelConfig(layerRecord.labelConfig);
+  symbologyLayerLabel.textContent = `Configure ${getGeometryKindLabel(getLayerGeometryKind(layerRecord)).toLowerCase()} styling and labels for ${layerRecord.name}.`;
   ensureSymbologyFieldOptions(layerRecord);
   symbologyTypeSelect.value = layerRecord.styleConfig.mode;
   symbologyFieldSelect.value = layerRecord.styleConfig.field;
@@ -138,7 +364,10 @@ function openSymbologyModal(layerId) {
   graduatedRampSelect.value = layerRecord.styleConfig.graduated.ramp;
   graduatedMethodSelect.value = layerRecord.styleConfig.graduated.method;
   graduatedClassCountSelect.value = String(layerRecord.styleConfig.graduated.classCount);
+  setAdvancedStyleControls(layerRecord);
+  setLabelControls(layerRecord);
   renderSymbologyPanels(layerRecord);
+  setSymbologyTab("styling");
   showModal(symbologyModal);
 }
 
@@ -160,9 +389,12 @@ function updateSymbologyFromControls() {
   layerRecord.styleConfig.graduated.ramp = graduatedRampSelect.value;
   layerRecord.styleConfig.graduated.method = graduatedMethodSelect.value;
   layerRecord.styleConfig.graduated.classCount = Number(graduatedClassCountSelect.value);
+  readAdvancedStyleControls(layerRecord);
+  readLabelControls(layerRecord);
 
   renderSymbologyPanels(layerRecord);
   rebuildLayerFromData(layerRecord);
+  if (typeof onProjectDirty === "function") onProjectDirty();
 }
 
 function resetSymbology() {
@@ -172,12 +404,15 @@ function resetSymbology() {
   }
 
   layerRecord.styleConfig = createDefaultStyleConfig(layerRecord.color);
+  layerRecord.labelConfig = createDefaultLabelConfig();
   symbologyTypeSelect.value = layerRecord.styleConfig.mode;
   symbologyFieldSelect.value = "";
   singleStyleColorInput.value = layerRecord.styleConfig.singleColor;
   graduatedRampSelect.value = layerRecord.styleConfig.graduated.ramp;
   graduatedMethodSelect.value = layerRecord.styleConfig.graduated.method;
   graduatedClassCountSelect.value = String(layerRecord.styleConfig.graduated.classCount);
+  setAdvancedStyleControls(layerRecord);
+  setLabelControls(layerRecord);
   renderSymbologyPanels(layerRecord);
   rebuildLayerFromData(layerRecord);
   updateStatus(`Symbology reset for ${layerRecord.name}.`);
@@ -785,10 +1020,23 @@ function clearLayerFilter() {
 }
 
 function renderEditableLayerOptions() {
+  // Pencil icon status is handled by renderAttributeTable
+  renderAttributeTable();
+}
+
+function updateDrawToolbarForActiveLayer() {
+  if (drawControl) {
+    map.removeControl(drawControl);
+    drawControl = null;
+  }
+  // Only add the draw toolbar to the map when a layer is actively being edited.
+  // When no layer is in edit mode getActiveEditableLayer() returns null and we
+  // leave the toolbar off entirely so the map stays uncluttered.
   const activeLayer = getActiveEditableLayer();
-  activeEditLayerName.textContent = activeLayer
-    ? `${activeLayer.name} is ready for drawing and node editing.`
-    : "Use the edit toggle in the Layers panel to choose which layer is editable.";
+  if (activeLayer) {
+    drawControl = createDrawControlForGeometry(activeLayer);
+    map.addControl(drawControl);
+  }
 }
 
 function setActiveEditableLayer(layerId) {
@@ -806,6 +1054,7 @@ function setActiveEditableLayer(layerId) {
   }
 
   activeEditableLayerId = layerId;
+  if (layerId) selectedTableLayerId = layerId;
   selectedFeatureContext = null;
   const activeLayer = getActiveEditableLayer();
 
@@ -823,17 +1072,30 @@ function setActiveEditableLayer(layerId) {
   }
 
   renderEditableLayerOptions();
+  updateDrawToolbarForActiveLayer();
   renderAttributeTable();
   renderLayerList();
   syncEditableWorkspace();
 
+  // Manage edit history: clear on every layer switch, push baseline when starting edit
+  clearEditHistory();
+  if (layerId && activeLayer) {
+    pushEditSnapshot(activeLayer);
+  }
+
   if (layerId) {
-    updateStatus("Editable layer changed. Use the draw toolbar to add or edit features.");
+    updateStatus(`Editable layer changed. Use the ${getGeometryKindLabel(getLayerGeometryKind(activeLayer)).toLowerCase()} draw tools.`);
   }
 }
 
 function getActiveEditableLayer() {
   return loadedLayers.find((layerRecord) => layerRecord.id === activeEditableLayerId && isVectorLayerRecord(layerRecord)) || null;
+}
+
+function selectTableLayer(layerId) {
+  selectedTableLayerId = layerId;
+  renderAttributeTable();
+  renderLayerList();
 }
 
 function ensureVisibleLayersOnMap() {
@@ -853,11 +1115,10 @@ function syncEditableWorkspace() {
 
     const filteredFeatures = getFilteredFeatures(activeLayer);
     filteredFeatures.forEach((feature) => {
-      const featureColor = getFeatureColor(activeLayer, feature);
       const layers = L.geoJSON(feature, {
         style: () => createFeatureStyle(activeLayer, feature),
         pointToLayer: (currentFeature, latlng) =>
-          L.marker(latlng, { icon: createMarkerIcon(featureColor) }),
+          L.marker(latlng, { icon: VectorStyleManager.createPointIcon(activeLayer, feature) }),
       }).getLayers();
 
       layers.forEach((layer) => {
@@ -870,7 +1131,11 @@ function syncEditableWorkspace() {
 }
 
 function selectFeature(layerId, layer) {
-  if (layerId !== activeEditableLayerId) {
+  if (layerId === activeEditableLayerId) {
+    // Already the editable layer — just update selection context
+  } else if (selectedTableLayerId === layerId) {
+    // Layer is shown in table but not in edit mode — don't force edit on, just highlight row
+  } else {
     setActiveEditableLayer(layerId);
   }
 
@@ -886,24 +1151,84 @@ function selectFeature(layerId, layer) {
   }
 }
 
-function renderAttributeTable() {
-  const activeLayer = getActiveEditableLayer();
+/**
+ * Flush any in-progress cell edits from the live DOM before the table is
+ * re-rendered or edit mode is toggled off.  Without this, values typed into
+ * <input> elements that haven't fired a "change" event yet (because the user
+ * never blurred them before clicking the edit toggle) are silently discarded.
+ */
+function flushPendingTableEdits() {
+  if (!attributeTableWrap) return;
+  attributeTableWrap.querySelectorAll("[data-field][data-feature-id]").forEach((input) => {
+    const { featureId, field } = input.dataset;
+    if (!featureId || !field) return;
+    const activeLayer = getActiveEditableLayer();
+    if (!activeLayer) return;
+    const feature = getFeatureById(activeLayer, featureId);
+    if (!feature) return;
+    const currentValue = String(feature.properties?.[field] ?? "");
+    if (input.value !== currentValue) {
+      updateAttributeTableCell(featureId, field, input.value);
+    }
+  });
+}
 
-  if (!activeLayer) {
-    attributeTableInfo.textContent =
-      "Put a layer in edit mode to view and edit its attribute table.";
+function renderAttributeTable() {
+  // Determine which layer to show: prefer selectedTableLayerId, fall back to activeEditable
+  const tableLayerId = selectedTableLayerId || activeEditableLayerId;
+  const tableLayer = tableLayerId
+    ? loadedLayers.find((lr) => lr.id === tableLayerId && isVectorLayerRecord(lr)) || null
+    : null;
+  const isEditMode = tableLayer && tableLayer.id === activeEditableLayerId;
+
+  // Update pencil icon status
+  if (tableEditStatusBtn) {
+    if (!tableLayer) {
+      tableEditStatusBtn.disabled = true;
+      tableEditStatusBtn.className = "table-edit-status edit-status-none";
+      tableEditStatusBtn.title = "Select a vector layer to edit";
+      tableEditStatusBtn.setAttribute("aria-label", "No layer selected");
+    } else if (!isEditableLayerRecord(tableLayer)) {
+      tableEditStatusBtn.disabled = true;
+      tableEditStatusBtn.className = "table-edit-status edit-status-locked";
+      tableEditStatusBtn.title = "This layer cannot be edited";
+      tableEditStatusBtn.setAttribute("aria-label", "Layer not editable");
+    } else {
+      tableEditStatusBtn.disabled = false;
+      tableEditStatusBtn.className = isEditMode
+        ? "table-edit-status edit-status-on"
+        : "table-edit-status edit-status-off";
+      tableEditStatusBtn.title = isEditMode ? "Editing enabled" : "Enable editing";
+      tableEditStatusBtn.setAttribute("aria-label", isEditMode ? "Edit mode on" : "Edit mode off");
+    }
+  }
+
+  // Update undo/redo button states
+  if (tableUndoBtn) {
+    tableUndoBtn.disabled = !isEditMode || !canUndoEdit();
+    tableUndoBtn.title = isEditMode ? (canUndoEdit() ? "Undo last edit" : "Nothing to undo") : "Enable edit mode to use undo";
+  }
+  if (tableRedoBtn) {
+    tableRedoBtn.disabled = !isEditMode || !canRedoEdit();
+    tableRedoBtn.title = isEditMode ? (canRedoEdit() ? "Redo" : "Nothing to redo") : "Enable edit mode to use redo";
+  }
+
+  // Update layer label
+  if (tableLayerLabel) {
+    tableLayerLabel.textContent = tableLayer ? tableLayer.name : "";
+  }
+
+  if (!tableLayer) {
     attributeTableWrap.className = "table-wrap empty-table";
     attributeTableWrap.innerHTML =
-      '<div class="table-placeholder">No editable layer selected.</div>';
+      '<div class="table-placeholder">Select a vector layer to view its attribute table.</div>';
     return;
   }
 
-  const features = activeLayer.geojson.features;
-  const fields = getLayerFieldNames(activeLayer);
-  attributeTableInfo.textContent = `${activeLayer.name} is open in edit mode. Table edits update the layer immediately.`;
+  const features = tableLayer.geojson.features;
+  const fields = getLayerFieldNames(tableLayer);
 
-  if (isLargeCsvLayerRecord(activeLayer)) {
-    attributeTableInfo.textContent = `${activeLayer.name} is in large-file mode. Use preview, heatmap, interpolation, and export tools instead of direct table editing.`;
+  if (isLargeCsvLayerRecord(tableLayer)) {
     attributeTableWrap.className = "table-wrap empty-table";
     attributeTableWrap.innerHTML =
       '<div class="table-placeholder">Large CSV mode keeps the map responsive by skipping the raw attribute table and per-point editing.</div>';
@@ -925,7 +1250,7 @@ function renderAttributeTable() {
   const bodyRows = features
     .map((feature, index) => {
       const isSelected =
-        selectedFeatureContext?.layerId === activeLayer.id &&
+        selectedFeatureContext?.layerId === tableLayer.id &&
         selectedFeatureContext?.featureId === feature.id;
       const cells = fields
         .map((field) => {
@@ -938,6 +1263,7 @@ function renderAttributeTable() {
                 data-feature-id="${escapeHtml(feature.id)}"
                 data-field="${escapeHtml(field)}"
                 value="${escapeHtml(String(value))}"
+                ${isEditMode ? "" : "readonly"}
               />
             </td>
           `;
@@ -957,13 +1283,22 @@ function renderAttributeTable() {
             >
               Locate
             </button>
+            <button
+              class="ghost-button table-row-button table-row-delete-btn"
+              type="button"
+              data-delete-feature-id="${escapeHtml(feature.id)}"
+              ${isEditMode ? "" : "disabled"}
+              title="${isEditMode ? "Remove this feature" : "Enable editing to remove features"}"
+            >
+              Remove
+            </button>
           </td>
         </tr>
       `;
     })
     .join("");
 
-  attributeTableWrap.className = "table-wrap";
+  attributeTableWrap.className = `table-wrap${isEditMode ? "" : " table-readonly"}`;
   attributeTableWrap.innerHTML = `
     <table class="attribute-table">
       <thead>
@@ -976,15 +1311,49 @@ function renderAttributeTable() {
   `;
 
   attributeTableWrap.querySelectorAll("[data-field]").forEach((input) => {
-    input.addEventListener("change", (event) => {
-      const { featureId, field } = event.target.dataset;
-      updateAttributeTableCell(featureId, field, event.target.value);
-    });
+    if (isEditMode) {
+      input.addEventListener("change", (event) => {
+        const { featureId, field } = event.target.dataset;
+        updateAttributeTableCell(featureId, field, event.target.value);
+      });
+    }
   });
 
   attributeTableWrap.querySelectorAll("[data-zoom-feature-id]").forEach((button) => {
     button.addEventListener("click", (event) => {
       zoomToFeature(event.target.dataset.zoomFeatureId);
+    });
+  });
+
+  attributeTableWrap.querySelectorAll("[data-delete-feature-id]").forEach((button) => {
+    button.addEventListener("click", (event) => {
+      const featureId = event.currentTarget.dataset.deleteFeatureId;
+      const activeLayer = getActiveEditableLayer();
+      if (!activeLayer) return;
+
+      // Snapshot BEFORE mutation so undo can restore this state
+      pushEditSnapshot(activeLayer);
+
+      // Remove the matching layer from drawWorkspace
+      drawWorkspace.getLayers().forEach((layer) => {
+        const feature = layerToFeature(layer);
+        if (feature?.id === featureId) {
+          drawWorkspace.removeLayer(layer);
+        }
+      });
+
+      // Also remove directly from the layerGroup if not yet in drawWorkspace
+      activeLayer.layerGroup.getLayers().forEach((layer) => {
+        const feature = layerToFeature(layer);
+        if (feature?.id === featureId) {
+          activeLayer.layerGroup.removeLayer(layer);
+        }
+      });
+
+      // Sync geojson and re-render
+      syncActiveLayerGeoJSONFromMap();
+      if (typeof onProjectDirty === "function") onProjectDirty();
+      updateStatus("Feature removed.");
     });
   });
 }
@@ -1420,8 +1789,10 @@ function updateCalculatorPreview() {
       layerRecord: activeLayer,
       rowIndex: previewTarget.rowIndex,
     });
+    const isAreaExpression = /\barea\s*\(/i.test(expression);
+    const unitSuffix = isAreaExpression && typeof evaluation.result === "number" ? " sq. meters" : "";
     calculatorPreviewText.textContent =
-      `Preview result (${previewTarget.label}, ${evaluation.engine === "qgis" ? "new engine" : "legacy fallback"}): ${formatCalculatorPreviewValue(evaluation.result)}`;
+      `Preview result (${previewTarget.label}, ${evaluation.engine === "qgis" ? "new engine" : "legacy fallback"}): ${formatCalculatorPreviewValue(evaluation.result)}${unitSuffix}`;
     renderCalculatorPreviewDetails(previewTarget.feature, expression);
     setCalculatorError("");
   } catch (error) {
@@ -1616,6 +1987,9 @@ function updateAttributeTableCell(featureId, fieldName, fieldValue) {
     return;
   }
 
+  // Snapshot BEFORE mutation so undo restores the old value
+  pushEditSnapshot(activeLayer);
+
   feature.properties[fieldName] = fieldValue;
   if (!activeLayer.fields.includes(fieldName)) {
     activeLayer.fields.push(fieldName);
@@ -1629,7 +2003,10 @@ function updateAttributeTableCell(featureId, fieldName, fieldValue) {
 }
 
 function zoomToFeature(featureId) {
-  const activeLayer = getActiveEditableLayer();
+  const tableLayerId = selectedTableLayerId || activeEditableLayerId;
+  const activeLayer = tableLayerId
+    ? loadedLayers.find((lr) => lr.id === tableLayerId && isVectorLayerRecord(lr)) || null
+    : null;
   if (!activeLayer) {
     return;
   }
@@ -1649,7 +2026,7 @@ function zoomToFeature(featureId) {
   selectFeature(activeLayer.id, layer);
 }
 
-function createEmptyLayer(name) {
+function createEmptyLayer(name, geometryKind = "point") {
   const layerName = name || `New Layer ${loadedLayers.length + 1}`;
   const layerRecord = createLayerRecord(
     {
@@ -1657,12 +2034,13 @@ function createEmptyLayer(name) {
       features: [],
     },
     `${layerName}.geojson`,
-    "Created Layer"
+    "Created Layer",
+    { geometryKind: normalizeVectorGeometryKind(geometryKind, "point") }
   );
 
   addLayerRecord(layerRecord);
   setActiveEditableLayer(layerRecord.id);
-  updateStatus(`${layerRecord.name} created and set to edit mode.`);
+  updateStatus(`${layerRecord.name} created as a ${getGeometryKindLabel(layerRecord.geometryKind).toLowerCase()} layer and set to edit mode.`);
   closeLayerModal();
 }
 
@@ -1756,6 +2134,10 @@ function syncActiveLayerGeoJSONFromMap() {
   }
 
   activeLayer.fields = getLayerFieldNames(activeLayer);
+  const inferredGeometryKind = inferVectorGeometryKind(activeLayer.geojson);
+  if (inferredGeometryKind !== "unknown") {
+    activeLayer.geometryKind = inferredGeometryKind;
+  }
   activeLayer.featureCount = activeLayer.geojson.features.length;
   activeLayer.visibleFeatureCount = getFilteredFeatures(activeLayer).length;
   renderLayerList();
@@ -1768,30 +2150,49 @@ async function handleFiles(files) {
     return;
   }
 
-  for (const file of fileList) {
-    updateStatus(`Loading ${file.name}...`);
-    updateImportProgress(`Loading ${file.name}`, 4, "Preparing file");
+  const looseShapefileGroups = getLooseShapefileGroups(fileList);
+  const imports = [
+    ...looseShapefileGroups.map((group) => ({
+      kind: "loose-shapefile",
+      label: `${group.stem}.shp`,
+      group,
+    })),
+    ...fileList
+      .filter((file) => !isFileInLooseShapefileGroup(file, looseShapefileGroups))
+      .map((file) => ({
+        kind: "file",
+        label: file.name,
+        file,
+      })),
+  ];
+
+  for (const item of imports) {
+    updateStatus(`Loading ${item.label}...`);
+    updateImportProgress(`Loading ${item.label}`, 4, "Preparing file");
 
     try {
-      const { data, sourceType, importKind } = await parseSpatialFile(file);
+      const { data, sourceType, importKind, fileName } = item.kind === "loose-shapefile"
+        ? await parseLooseShapefileGroup(item.group)
+        : await parseSpatialFile(item.file);
+      const displayName = fileName || item.label;
       const layerRecord = importKind === "geotiff"
-        ? createGeoTiffLayerRecord(data, file.name, sourceType)
+        ? createGeoTiffLayerRecord(data, displayName, sourceType)
         : importKind === "csv-dataset"
           ? (data.previewMode === "full"
-            ? createLayerRecord(buildCsvPreviewGeoJSON(data), file.name, sourceType)
-            : createLargeCsvLayerRecord(data, file.name, sourceType))
-          : createLayerRecord(data, file.name, sourceType);
+            ? createLayerRecord(buildCsvPreviewGeoJSON(data), displayName, sourceType)
+            : createLargeCsvLayerRecord(data, displayName, sourceType))
+          : createLayerRecord(data, displayName, sourceType);
       addLayerRecord(layerRecord);
       if (isRasterLayerRecord(layerRecord) && layerRecord.rasterKind === "geotiff") {
-        updateStatus(`Loaded ${file.name} as a GeoTIFF raster (${layerRecord.rasterMetadata.width} x ${layerRecord.rasterMetadata.height}, ${layerRecord.rasterMetadata.bandCount} band(s)).`);
+        updateStatus(`Loaded ${displayName} as a GeoTIFF raster (${layerRecord.rasterMetadata.width} x ${layerRecord.rasterMetadata.height}, ${layerRecord.rasterMetadata.bandCount} band(s)).`);
       } else if (isLargeCsvLayerRecord(layerRecord)) {
-        updateStatus(`Loaded ${file.name} in large-file mode with ${formatCompactNumber(layerRecord.featureCount, 0)} points.`);
+        updateStatus(`Loaded ${displayName} in large-file mode with ${formatCompactNumber(layerRecord.featureCount, 0)} points.`);
       } else {
-        updateStatus(`Loaded ${file.name} as a ${sourceType} layer.`);
+        updateStatus(`Loaded ${displayName} as a ${sourceType} layer.`);
       }
     } catch (error) {
       console.error(error);
-      updateStatus(`Could not load ${file.name}: ${error.message}`, true);
+      updateStatus(`Could not load ${item.label}: ${error.message}`, true);
     } finally {
       clearImportProgress();
     }

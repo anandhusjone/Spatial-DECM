@@ -62,7 +62,7 @@ QGIS-style expressions · Arithmetic · String ops (`||`) · `CASE WHEN` · Null
 
 **🎨 Styling**
 
-Vector single color · Categorized · Graduated · Raster gray / pseudocolor · Color ramps · Contrast / brightness / opacity · Query builder with `AND` / `OR` filters
+Advanced point / line / polygon symbols · Categorized · Graduated · Rule-based styling · Labels with halo/background/scale controls · Raster gray / pseudocolor · Color ramps · Query builder with `AND` / `OR` filters
 
 <br/>
 
@@ -92,7 +92,8 @@ GeoJSON · KML · Zipped Shapefile
 | `.geojson` / `.json` | Standard GeoJSON |
 | `.kml` | Keyhole Markup Language |
 | `.gpx` | GPS Exchange Format |
-| `.zip` | Shapefile bundle — must include `.shp`, `.shx`, `.dbf` |
+| `.zip` | Zipped shapefile bundle — must include `.shp`, `.shx`, `.dbf` |
+| `.shp` + sidecars | Loose shapefile import — select or drag the matching `.shp`, `.dbf`, `.shx`, `.prj`, and `.cpg` files together |
 | `.csv` | Must include lat/lon columns (`lat`, `lon`, `lng`, `x`, `y`) |
 | `.tif` / `.tiff` | GeoTIFF raster with tiled browser rendering, raster metadata, pixel sampling, NoData handling, and WGS84 / Web Mercator / WGS84 UTM alignment. |
 
@@ -114,6 +115,12 @@ GeoJSON · KML · Zipped Shapefile
 ## CRS handling
 
 Coordinate system detection, validation, transformation, and layer reprojection are centralized in `app/crs-manager.js`. The app uses Proj4 when available, includes built-in support for WGS84, Web Mercator, and WGS84 UTM zones, and exposes registration hooks for custom CRS definitions. Vector imports with declared CRS metadata are normalized to the map CRS, and GeoTIFF rasters use the same CRS service for alignment and sampling.
+
+## Styling and labeling
+
+Vector styling and labeling are centralized in `app/vector-style-manager.js`. Point layers support circle, square, triangle, star, cross, and custom icon symbols with size, fill, stroke, and opacity controls. Line layers support width, color, opacity, dash styles, custom dash patterns, caps, and joins. Polygon layers support fill opacity, outline-only rendering, stroke color, width, opacity, and stroke styles.
+
+Labels can be enabled per layer with a field or `{field}` template expression, font styling, text opacity, halo, background, border, offsets, rotation, priority, overlap avoidance, and min/max zoom visibility. Style and label edits are applied live and saved with project files.
 
 <br/>
 

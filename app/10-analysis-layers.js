@@ -186,38 +186,7 @@ function getFilteredFeatures(layerRecord) {
 }
 
 function getFeatureColor(layerRecord, feature) {
-  const styleConfig = layerRecord?.styleConfig || createDefaultStyleConfig(layerRecord?.color || "#1db7a6");
-
-  if (styleConfig.mode === "categorized" && styleConfig.field) {
-    const displayValue = getDisplayValue(getNormalizedFeatureValue(feature, styleConfig.field));
-    return styleConfig.categorized.valueColors[displayValue] || styleConfig.singleColor || layerRecord.color;
-  }
-
-  if (styleConfig.mode === "graduated" && styleConfig.field) {
-    const numericValue = Number(getNormalizedFeatureValue(feature, styleConfig.field));
-    if (Number.isFinite(numericValue)) {
-      const breaks = computeGraduatedBreaks(
-        layerRecord,
-        styleConfig.field,
-        styleConfig.graduated.classCount,
-        styleConfig.graduated.method
-      );
-      const rampColors = buildColorRamp(styleConfig.graduated.ramp, breaks.length || 1);
-      const breakIndex = breaks.findIndex((currentBreak, index) => {
-        if (index === breaks.length - 1) {
-          return numericValue >= currentBreak.min && numericValue <= currentBreak.max;
-        }
-
-        return numericValue >= currentBreak.min && numericValue < currentBreak.max;
-      });
-
-      if (breakIndex >= 0) {
-        return rampColors[breakIndex];
-      }
-    }
-  }
-
-  return styleConfig.singleColor || layerRecord?.color || "#1db7a6";
+  return VectorStyleManager.resolveFeatureColor(layerRecord, feature);
 }
 
 function clearInterpolationOverlay(layerRecord) {
@@ -1444,7 +1413,7 @@ function removeDerivedHeatmapLayers(sourceLayerId) {
 }
 
 function createFeatureStyle(layerRecord, feature) {
-  return defaultStyle(getFeatureColor(layerRecord, feature));
+  return VectorStyleManager.createPathStyle(layerRecord, feature);
 }
 
 function bindFeatureBehavior(layerRecord, layer, feature, targetGroup = layerRecord.layerGroup) {
@@ -1455,6 +1424,7 @@ function bindFeatureBehavior(layerRecord, layer, feature, targetGroup = layerRec
     selectFeature(layerRecord.id, layer);
   });
 
+  VectorStyleManager.bindLabel(layerRecord, layer, feature);
   refreshFeaturePopup(layer);
 }
 
@@ -1597,11 +1567,10 @@ function rebuildLayerFromData(layerRecord) {
   const filteredFeatures = getFilteredFeatures(layerRecord);
 
   filteredFeatures.forEach((feature) => {
-    const featureColor = getFeatureColor(layerRecord, feature);
     const layers = L.geoJSON(feature, {
       style: () => createFeatureStyle(layerRecord, feature),
       pointToLayer: (currentFeature, latlng) =>
-        L.marker(latlng, { icon: createMarkerIcon(featureColor) }),
+        L.marker(latlng, { icon: VectorStyleManager.createPointIcon(layerRecord, feature) }),
     }).getLayers();
 
     layers.forEach((layer) => {
@@ -1632,10 +1601,12 @@ function rebuildLayerFromData(layerRecord) {
   updateInterpolationLegend();
 }
 
-function createLayerRecord(geojson, fileName, sourceType) {
+function createLayerRecord(geojson, fileName, sourceType, options = {}) {
   const normalizedGeojson = normalizeGeoJSON(geojson);
   const color = palette[layerCount % palette.length];
   layerCount += 1;
+  const inferredGeometryKind = inferVectorGeometryKind(normalizedGeojson);
+  const geometryKind = normalizeVectorGeometryKind(options.geometryKind || inferredGeometryKind, inferredGeometryKind);
 
   const layerRecord = {
     id: crypto.randomUUID(),
@@ -1643,12 +1614,14 @@ function createLayerRecord(geojson, fileName, sourceType) {
     name: fileName,
     sourceType,
     color,
+    geometryKind,
     isVisible: true,
     geojson: normalizedGeojson,
     fields: collectFieldNamesFromGeoJSON(normalizedGeojson),
     crs: CRSManager.DEFAULT_CRS,
     crsMetadata: CRSManager.getCrsMetadata(CRSManager.DEFAULT_CRS),
     styleConfig: createDefaultStyleConfig(color),
+    labelConfig: createDefaultLabelConfig(),
     interpolationConfig: createDefaultInterpolationConfig(),
     heatmapConfig: createDefaultHeatmapConfig(),
     filterConfig: createDefaultFilterConfig(),
@@ -1683,6 +1656,7 @@ function createLargeCsvLayerRecord(csvDataset, fileName, sourceType) {
     name: fileName,
     sourceType,
     color,
+    geometryKind: "point",
     isVisible: true,
     geojson: previewGeojson,
     analysisGeojson,
@@ -1690,6 +1664,7 @@ function createLargeCsvLayerRecord(csvDataset, fileName, sourceType) {
     crs: CRSManager.DEFAULT_CRS,
     crsMetadata: CRSManager.getCrsMetadata(CRSManager.DEFAULT_CRS),
     styleConfig: createDefaultStyleConfig(color),
+    labelConfig: createDefaultLabelConfig(),
     interpolationConfig: createDefaultInterpolationConfig(),
     heatmapConfig: createDefaultHeatmapConfig(),
     filterConfig: createDefaultFilterConfig(),
@@ -1738,6 +1713,7 @@ function createRasterLayerRecord(sourceLayerRecord, rasterResult) {
     crs: CRSManager.DEFAULT_CRS,
     crsMetadata: CRSManager.getCrsMetadata(CRSManager.DEFAULT_CRS),
     styleConfig: createDefaultStyleConfig(sourceLayerRecord?.color || "#43c2ff"),
+    labelConfig: createDefaultLabelConfig(),
     interpolationConfig: null,
     heatmapConfig: null,
     filterConfig: createDefaultFilterConfig(),
@@ -1779,6 +1755,7 @@ function createGeoTiffLayerRecord(rasterData, fileName, sourceType) {
     },
     fields: [],
     styleConfig: createDefaultStyleConfig("#43c2ff"),
+    labelConfig: createDefaultLabelConfig(),
     rasterStyleConfig: rasterData.styleConfig,
     interpolationConfig: null,
     heatmapConfig: null,
@@ -1859,9 +1836,90 @@ async function fileToArrayBuffer(file) {
   return file.arrayBuffer();
 }
 
+function getFileExtension(fileName) {
+  return String(fileName || "").split(".").pop()?.toLowerCase() || "";
+}
+
+function getFileStem(fileName) {
+  return String(fileName || "").replace(/\.[^.]+$/, "").toLowerCase();
+}
+
+function isLooseShapefilePart(file) {
+  return ["shp", "shx", "dbf", "prj", "cpg"].includes(getFileExtension(file?.name));
+}
+
+function getLooseShapefileGroups(files) {
+  const groups = new Map();
+
+  files.filter(isLooseShapefilePart).forEach((file) => {
+    const stem = getFileStem(file.name);
+    const extension = getFileExtension(file.name);
+    if (!groups.has(stem)) {
+      groups.set(stem, {
+        stem,
+        files: {},
+      });
+    }
+    groups.get(stem).files[extension] = file;
+  });
+
+  return Array.from(groups.values()).filter((group) => group.files.shp);
+}
+
+function isFileInLooseShapefileGroup(file, groups) {
+  if (!isLooseShapefilePart(file)) {
+    return false;
+  }
+  const stem = getFileStem(file.name);
+  return groups.some((group) => group.stem === stem);
+}
+
+async function parseLooseShapefileGroup(group) {
+  const files = group?.files || {};
+  if (!files.shp) {
+    throw new Error("Loose shapefile import needs a .shp file.");
+  }
+  if (!files.dbf) {
+    throw new Error(`Loose shapefile ${group.stem} needs its matching .dbf file.`);
+  }
+  const shpApi = window.shp;
+  if (typeof shpApi?.parseShp !== "function" || typeof shpApi?.parseDbf !== "function") {
+    throw new Error("Shapefile parser did not load. Check your network connection and reload the app.");
+  }
+
+  const shpBuffer = await fileToArrayBuffer(files.shp);
+  const dbfBuffer = await fileToArrayBuffer(files.dbf);
+  const prjText = files.prj ? await fileToText(files.prj) : undefined;
+  const cpgText = files.cpg ? (await fileToText(files.cpg)).trim() : undefined;
+  const geometries = shpApi.parseShp(shpBuffer, prjText);
+  const properties = shpApi.parseDbf(dbfBuffer, cpgText);
+
+  const featureCollection =
+    typeof shpApi.combine === "function"
+      ? shpApi.combine([geometries, properties])
+      : {
+          type: "FeatureCollection",
+          features: geometries.map((geometry, index) => ({
+            type: "Feature",
+            properties: properties[index] || {},
+            geometry,
+          })),
+        };
+
+  if (!featureCollection?.features?.length) {
+    throw new Error(`Loose shapefile ${group.stem} did not contain any readable features.`);
+  }
+
+  return {
+    data: featureCollection,
+    sourceType: "Shapefile",
+    fileName: files.shp.name,
+  };
+}
+
 async function parseSpatialFile(file) {
   const fileName = file.name;
-  const extension = fileName.split(".").pop()?.toLowerCase();
+  const extension = getFileExtension(fileName);
 
   if (extension === "geojson" || extension === "json") {
     const text = await fileToText(file);
@@ -1896,8 +1954,11 @@ async function parseSpatialFile(file) {
   }
 
   if (extension === "zip") {
+    if (typeof window.shp !== "function") {
+      throw new Error("Shapefile parser did not load. Check your network connection and reload the app.");
+    }
     const buffer = await fileToArrayBuffer(file);
-    const parsed = await shp(buffer);
+    const parsed = await window.shp(buffer);
     const featureCollection = Array.isArray(parsed)
       ? {
           type: "FeatureCollection",
@@ -2503,7 +2564,13 @@ function addLayerRecord(layerRecord) {
 
   if (!activeEditableLayerId && isEditableLayerRecord(layerRecord)) {
     activeEditableLayerId = layerRecord.id;
+    if (typeof updateDrawToolbarForActiveLayer === "function") {
+      updateDrawToolbarForActiveLayer();
+    }
     syncEditableWorkspace();
+  }
+  if (!selectedTableLayerId && isVectorLayerRecord(layerRecord)) {
+    selectedTableLayerId = layerRecord.id;
   }
 
   renderLayerList();
@@ -2527,7 +2594,13 @@ function removeLayer(id) {
   if (activeEditableLayerId === id) {
     activeEditableLayerId = loadedLayers.find((item) => isEditableLayerRecord(item))?.id || "";
     selectedFeatureContext = null;
+    if (typeof updateDrawToolbarForActiveLayer === "function") {
+      updateDrawToolbarForActiveLayer();
+    }
     syncEditableWorkspace();
+  }
+  if (selectedTableLayerId === id) {
+    selectedTableLayerId = activeEditableLayerId || loadedLayers.find((item) => isVectorLayerRecord(item))?.id || "";
   }
 
   renderLayerList();
@@ -2567,6 +2640,9 @@ function toggleLayer(id, visible) {
     if (activeEditableLayerId === id && isVectorLayerRecord(layerRecord)) {
       activeEditableLayerId = "";
       selectedFeatureContext = null;
+      if (typeof updateDrawToolbarForActiveLayer === "function") {
+        updateDrawToolbarForActiveLayer();
+      }
       syncEditableWorkspace();
       renderEditableLayerOptions();
       renderAttributeTable();
@@ -2624,6 +2700,11 @@ function runLayerCardAction(layerRecord, actionName, closeDetailsMenu = null) {
 
   if (actionName === "toggle-edit" && isEditableLayerRecord(layerRecord)) {
     const isCurrentEditable = layerRecord.id === activeEditableLayerId;
+    // Flush any in-progress cell edits before toggling off, so typed-but-not-blurred
+    // values are saved to the GeoJSON rather than discarded on re-render.
+    if (isCurrentEditable && typeof flushPendingTableEdits === "function") {
+      flushPendingTableEdits();
+    }
     setActiveEditableLayer(isCurrentEditable ? "" : layerRecord.id);
     return;
   }
@@ -2717,7 +2798,9 @@ function renderLayerList() {
 
   loadedLayers.forEach((layerRecord) => {
     const wrapper = document.createElement("article");
-    wrapper.className = "layer-card";
+    const isTableSelected = isVectorLayerRecord(layerRecord) &&
+      (layerRecord.id === selectedTableLayerId || (!selectedTableLayerId && layerRecord.id === activeEditableLayerId));
+    wrapper.className = `layer-card${isTableSelected ? " table-selected" : ""}`;
     wrapper.dataset.layerId = layerRecord.id;
 
     const isVisible = layerRecord.isVisible !== false;
@@ -2730,7 +2813,7 @@ function renderLayerList() {
     const rasterMetadata = layerRecord.rasterMetadata;
     const primaryMeta = isRasterLayerRecord(layerRecord)
       ? `${escapeHtml(layerRecord.sourceType)} • ${escapeHtml(rasterMetadata?.methodLabel || "Surface")}`
-      : `${escapeHtml(layerRecord.sourceType)} • ${layerRecord.featureCount} feature(s)`;
+      : `${escapeHtml(layerRecord.sourceType)} • ${escapeHtml(getGeometryKindLabel(getLayerGeometryKind(layerRecord)))} • ${layerRecord.featureCount} feature(s)`;
     const secondaryMeta = isRasterLayerRecord(layerRecord)
       ? layerRecord.rasterKind === "geotiff"
         ? `${formatCompactNumber(rasterMetadata?.width, 0)} x ${formatCompactNumber(rasterMetadata?.height, 0)} • ${formatCompactNumber(rasterMetadata?.bandCount, 0)} band(s)`
@@ -2750,35 +2833,47 @@ function renderLayerList() {
         ? "Edit mode active"
         : "View only";
 
+    const editTitle = canEdit
+      ? (isEditable ? "Editing enabled" : "Enable editing")
+      : isVectorLayerRecord(layerRecord)
+        ? `Editing is disabled above ${formatCompactNumber(VECTOR_EDIT_FEATURE_LIMIT, 0)} features`
+        : isLargeCsvLayerRecord(layerRecord)
+          ? "Large-file mode is view and analysis only"
+          : "Raster layers cannot be edited";
+
     wrapper.innerHTML = `
-      <div class="layer-card-header">
-        <div class="layer-card-primary">
-          <button class="layer-name-button" type="button">${escapeHtml(layerRecord.name)}</button>
-          <button class="edit-mode-toggle ${isEditable ? "active" : ""}" data-edit-toggle-id="${layerRecord.id}" type="button" aria-pressed="${isEditable ? "true" : "false"}" title="${canEdit ? (isEditable ? "Editing enabled" : "Enable editing") : (isLargeCsvLayerRecord(layerRecord) ? "Large-file mode is view and analysis only" : "Raster layers cannot be edited")}" ${canEdit ? "" : "disabled"}>
-            <span class="edit-mode-dot"></span>
+      <div class='layer-card-header'>
+        <div class='layer-card-primary'>
+          <button class='layer-drag-handle' type='button' title='Drag to reorder' aria-label='Drag to reorder layer' draggable='false'>
+            <svg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 14 14' fill='currentColor' aria-hidden='true'>
+              <circle cx='4' cy='2.5' r='1.2'/><circle cx='10' cy='2.5' r='1.2'/>
+              <circle cx='4' cy='7' r='1.2'/><circle cx='10' cy='7' r='1.2'/>
+              <circle cx='4' cy='11.5' r='1.2'/><circle cx='10' cy='11.5' r='1.2'/>
+            </svg>
+          </button>
+          <button class='layer-name-button' type='button'>${escapeHtml(layerRecord.name)}</button>
+          <button class='edit-mode-toggle ${isEditable ? "active" : ""}' data-edit-toggle-id='${layerRecord.id}' type='button' aria-pressed='${isEditable}' title='${escapeHtml(editTitle)}' ${canEdit ? "" : "disabled"}>
+            <span class='edit-mode-dot'></span>
           </button>
         </div>
-        <div class="layer-card-details">
-          <div class="layer-meta layer-meta-strong">${primaryMeta}</div>
-          <div class="layer-meta">${secondaryMeta}</div>
-          <div class="layer-meta">${escapeHtml(tertiaryMeta)}</div>
+        <div class='layer-card-details'>
+          <div class='layer-meta layer-meta-strong'>${primaryMeta}</div>
+          <div class='layer-meta'>${secondaryMeta}</div>
+          <div class='layer-meta'>${escapeHtml(tertiaryMeta)}</div>
         </div>
-        <div class="layer-card-footer">
-          <label class="toggle-wrap layer-visibility-toggle">
-            <input type="checkbox" ${isVisible ? "checked" : ""} />
-            <span>Visible</span>
-          </label>
-          <details class="layer-menu-shell">
-            <summary class="layer-menu-toggle" aria-label="Layer actions" title="Layer actions">...</summary>
-            <div class="layer-menu" role="menu">
-              <button class="layer-menu-action zoom" type="button" role="menuitem">Zoom</button>
-              ${canStyle ? '<button class="layer-menu-action style accent-action" type="button" role="menuitem">Style</button>' : ""}
-              ${canRasterStyle ? '<button class="layer-menu-action raster-style accent-action" type="button" role="menuitem">Raster Style</button>' : ""}
-              ${canInterpolate ? '<button class="layer-menu-action interpolation accent-action" type="button" role="menuitem">Interpolate</button>' : ""}
-              ${canHeatmap ? '<button class="layer-menu-action heatmap accent-action" type="button" role="menuitem">Heatmap</button>' : ""}
-              ${canEdit ? '<button class="layer-menu-action filter accent-action" type="button" role="menuitem">Filter</button>' : ""}
-              ${isVectorLayerRecord(layerRecord) ? '<button class="layer-menu-action export" type="button" role="menuitem">Export</button>' : ""}
-              <button class="layer-menu-action remove" type="button" role="menuitem">Remove</button>
+        <div class='layer-card-footer'>
+          <span class='layer-visibility-btn-placeholder'></span>
+          <details class='layer-menu-shell'>
+            <summary class='layer-menu-toggle' aria-label='Layer actions' title='Layer actions'>...</summary>
+            <div class='layer-menu' role='menu'>
+              <button class='layer-menu-action zoom' type='button' role='menuitem'>Zoom</button>
+              ${canStyle ? "<button class='layer-menu-action style accent-action' type='button' role='menuitem'>Style</button>" : ""}
+              ${canRasterStyle ? "<button class='layer-menu-action raster-style accent-action' type='button' role='menuitem'>Raster Style</button>" : ""}
+              ${canInterpolate ? "<button class='layer-menu-action interpolation accent-action' type='button' role='menuitem'>Interpolate</button>" : ""}
+              ${canHeatmap ? "<button class='layer-menu-action heatmap accent-action' type='button' role='menuitem'>Heatmap</button>" : ""}
+              ${canEdit ? "<button class='layer-menu-action filter accent-action' type='button' role='menuitem'>Filter</button>" : ""}
+              ${isVectorLayerRecord(layerRecord) ? "<button class='layer-menu-action export' type='button' role='menuitem'>Export</button>" : ""}
+              <button class='layer-menu-action remove' type='button' role='menuitem'>Remove</button>
             </div>
           </details>
         </div>
@@ -2786,7 +2881,16 @@ function renderLayerList() {
     `;
 
     const nameButton = wrapper.querySelector(".layer-name-button");
-    const checkbox = wrapper.querySelector('input[type="checkbox"]');
+    const visibilityBtn = document.createElement("button");
+    visibilityBtn.type = "button";
+    visibilityBtn.className = `layer-visibility-btn ${isVisible ? "eye-on" : "eye-off"}`;
+    visibilityBtn.title = isVisible ? "Hide layer" : "Show layer";
+    visibilityBtn.setAttribute("aria-label", isVisible ? "Layer visible" : "Layer hidden");
+    visibilityBtn.setAttribute("aria-pressed", String(isVisible));
+    visibilityBtn.innerHTML = isVisible
+      ? `<svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>`
+      : `<svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>`;
+    wrapper.querySelector(".layer-visibility-btn-placeholder").replaceWith(visibilityBtn);
     const editButton = wrapper.querySelector(".edit-mode-toggle");
     const menuShell = wrapper.querySelector(".layer-menu-shell");
     const zoomButton = wrapper.querySelector(".zoom");
@@ -2798,8 +2902,24 @@ function renderLayerList() {
     const exportButton = wrapper.querySelector(".export");
     const removeButton = wrapper.querySelector(".remove");
 
-    nameButton.addEventListener("click", () => zoomToLayer(layerRecord.id));
-    checkbox.addEventListener("change", () => runLayerCardAction(layerRecord, "toggle-visibility"));
+    nameButton.addEventListener("click", () => {
+      if (isVectorLayerRecord(layerRecord) && typeof selectTableLayer === "function") {
+        selectTableLayer(layerRecord.id);
+      }
+      zoomToLayer(layerRecord.id);
+    });
+    visibilityBtn.addEventListener("click", () => {
+      runLayerCardAction(layerRecord, "toggle-visibility");
+      // Update this button directly — toggleLayer does not call renderLayerList
+      const nowVisible = layerRecord.isVisible !== false;
+      visibilityBtn.className = `layer-visibility-btn ${nowVisible ? "eye-on" : "eye-off"}`;
+      visibilityBtn.title = nowVisible ? "Hide layer" : "Show layer";
+      visibilityBtn.setAttribute("aria-label", nowVisible ? "Layer visible" : "Layer hidden");
+      visibilityBtn.setAttribute("aria-pressed", String(nowVisible));
+      visibilityBtn.innerHTML = nowVisible
+        ? `<svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>`
+        : `<svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>`;
+    });
     if (canEdit) {
       editButton.addEventListener("click", () => runLayerCardAction(layerRecord, "toggle-edit"));
     }
@@ -2818,6 +2938,45 @@ function renderLayerList() {
     exportButton?.addEventListener("click", () => runLayerCardAction(layerRecord, "export", closeMenu));
     removeButton.addEventListener("click", () => runLayerCardAction(layerRecord, "remove", closeMenu));
 
+    // Drag-to-reorder: make the whole card draggable; handle triggers it
+    const dragHandle = wrapper.querySelector(".layer-drag-handle");
+    dragHandle.addEventListener("mousedown", () => { wrapper.draggable = true; });
+    dragHandle.addEventListener("mouseleave", () => { if (!wrapper.classList.contains("dragging")) wrapper.draggable = false; });
+    wrapper.addEventListener("dragstart", (e) => {
+      isDraggingLayer = true;
+      wrapper.classList.add("dragging");
+      e.dataTransfer.effectAllowed = "move";
+      e.dataTransfer.setData("text/plain", layerRecord.id);
+    });
+    wrapper.addEventListener("dragend", () => {
+      isDraggingLayer = false;
+      wrapper.draggable = false;
+      wrapper.classList.remove("dragging");
+      document.querySelectorAll(".layer-card.drag-over").forEach((el) => el.classList.remove("drag-over"));
+      applyLayerOrderFromDOM();
+    });
+    wrapper.addEventListener("dragover", (e) => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "move";
+      if (!wrapper.classList.contains("dragging")) wrapper.classList.add("drag-over");
+    });
+    wrapper.addEventListener("dragleave", () => wrapper.classList.remove("drag-over"));
+    wrapper.addEventListener("drop", (e) => {
+      e.preventDefault();
+      wrapper.classList.remove("drag-over");
+      const draggedId = e.dataTransfer.getData("text/plain");
+      const draggedEl = layerList.querySelector(`[data-layer-id="${CSS.escape(draggedId)}"]`);
+      if (!draggedEl || draggedEl === wrapper) return;
+      // Insert before or after depending on pointer position
+      const rect = wrapper.getBoundingClientRect();
+      const after = e.clientY > rect.top + rect.height / 2;
+      if (after) {
+        wrapper.after(draggedEl);
+      } else {
+        wrapper.before(draggedEl);
+      }
+    });
+
     layerList.appendChild(wrapper);
     nextAnimatedLayerIds.add(layerRecord.id);
     if (!animatedLayerIds.has(layerRecord.id)) {
@@ -2829,6 +2988,29 @@ function renderLayerList() {
   nextAnimatedLayerIds.forEach((id) => animatedLayerIds.add(id));
   animateLayerEntries(newlyAddedCards);
   runPendingEditToggleAnimations();
+}
+
+function applyLayerOrderFromDOM() {
+  // Read the new visual order from the DOM
+  const orderedIds = Array.from(layerList.querySelectorAll(".layer-card[data-layer-id]"))
+    .map((el) => el.dataset.layerId);
+
+  // Reorder loadedLayers in-place to match
+  const reordered = orderedIds
+    .map((id) => loadedLayers.find((lr) => lr.id === id))
+    .filter(Boolean);
+  reordered.forEach((lr, i) => { loadedLayers[i] = lr; });
+
+  // Re-sync Leaflet z-order: remove then re-add in order
+  // DOM top = index 0 = visually on top (added last = highest z in Leaflet)
+  reordered.forEach((lr) => {
+    if (lr.isVisible !== false) map.removeLayer(lr.layerGroup);
+  });
+  [...reordered].reverse().forEach((lr) => {
+    if (lr.isVisible !== false) lr.layerGroup.addTo(map);
+  });
+
+  if (typeof onProjectDirty === "function") onProjectDirty();
 }
 
 function getLayerFieldNames(layerRecord) {

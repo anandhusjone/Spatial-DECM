@@ -43,7 +43,12 @@ const basemapLabel = document.getElementById("basemap-label");
 const activeEditLayerName = document.getElementById("active-edit-layer-name");
 const attributeTableInfo = document.getElementById("attribute-table-info");
 const attributeTableWrap = document.getElementById("attribute-table-wrap");
+const tableLayerLabel = document.getElementById("table-layer-label");
+const tableEditStatusBtn = document.getElementById("table-edit-status-btn");
+const tableUndoBtn = document.getElementById("table-undo-btn");
+const tableRedoBtn = document.getElementById("table-redo-btn");
 const newLayerNameInput = document.getElementById("new-layer-name");
+const newLayerGeometryTypeSelect = document.getElementById("new-layer-geometry-type");
 const createLayerBtn = document.getElementById("create-layer-btn");
 const browseLayerBtn = document.getElementById("browse-layer-btn");
 const addFieldNameInput = document.getElementById("add-field-name");
@@ -100,10 +105,18 @@ const importProgressFill = document.getElementById("import-progress-fill");
 const symbologyModal = document.getElementById("symbology-modal");
 const closeSymbologyModalBtn = document.getElementById("close-symbology-modal-btn");
 const symbologyLayerLabel = document.getElementById("symbology-layer-label");
+const symbologyStylingTab = document.getElementById("symbology-styling-tab");
+const symbologyLabelingTab = document.getElementById("symbology-labeling-tab");
+const symbologyStylingPanel = document.getElementById("symbology-styling-panel");
+const symbologyLabelingPanel = document.getElementById("symbology-labeling-panel");
 const symbologyTypeSelect = document.getElementById("symbology-type");
 const symbologyFieldSelect = document.getElementById("symbology-field");
+const symbologyFieldStack = document.getElementById("symbology-field-stack");
 const singleStylePanel = document.getElementById("single-style-panel");
 const singleStyleColorInput = document.getElementById("single-style-color");
+const pointStylePanel = document.getElementById("point-style-panel");
+const lineStylePanel = document.getElementById("line-style-panel");
+const polygonStylePanel = document.getElementById("polygon-style-panel");
 const categorizedStylePanel = document.getElementById("categorized-style-panel");
 const categorizedValuesWrap = document.getElementById("categorized-values-wrap");
 const graduatedStylePanel = document.getElementById("graduated-style-panel");
@@ -111,6 +124,59 @@ const graduatedRampSelect = document.getElementById("graduated-ramp");
 const graduatedMethodSelect = document.getElementById("graduated-method");
 const graduatedClassCountSelect = document.getElementById("graduated-class-count");
 const graduatedBreaksWrap = document.getElementById("graduated-breaks-wrap");
+const pointSymbolShapeSelect = document.getElementById("point-symbol-shape");
+const pointSymbolSizeInput = document.getElementById("point-symbol-size");
+const pointFillColorInput = document.getElementById("point-fill-color");
+const pointStrokeColorInput = document.getElementById("point-stroke-color");
+const pointStrokeWidthInput = document.getElementById("point-stroke-width");
+const pointOpacityInput = document.getElementById("point-opacity");
+const pointIconUrlInput = document.getElementById("point-icon-url");
+const lineColorInput = document.getElementById("line-color");
+const lineWidthInput = document.getElementById("line-width");
+const lineOpacityInput = document.getElementById("line-opacity");
+const lineDashStyleSelect = document.getElementById("line-dash-style");
+const lineDashPatternInput = document.getElementById("line-dash-pattern");
+const lineCapSelect = document.getElementById("line-cap");
+const lineJoinSelect = document.getElementById("line-join");
+const polygonFillColorInput = document.getElementById("polygon-fill-color");
+const polygonFillOpacityInput = document.getElementById("polygon-fill-opacity");
+const polygonStrokeColorInput = document.getElementById("polygon-stroke-color");
+const polygonStrokeWidthInput = document.getElementById("polygon-stroke-width");
+const polygonStrokeOpacityInput = document.getElementById("polygon-stroke-opacity");
+const polygonStrokeStyleSelect = document.getElementById("polygon-stroke-style");
+const polygonOutlineOnlyInput = document.getElementById("polygon-outline-only");
+const ruleStylePanel = document.getElementById("rule-style-panel");
+const ruleStyleFieldSelect = document.getElementById("rule-style-field");
+const ruleStyleOperatorSelect = document.getElementById("rule-style-operator");
+const ruleStyleValueInput = document.getElementById("rule-style-value");
+const ruleStyleColorInput = document.getElementById("rule-style-color");
+const labelEnabledInput = document.getElementById("label-enabled");
+const labelOptionsWrap = document.getElementById("label-options-wrap");
+const labelFieldSelect = document.getElementById("label-field");
+const labelExpressionInput = document.getElementById("label-expression");
+const labelFontFamilySelect = document.getElementById("label-font-family");
+const labelFontSizeInput = document.getElementById("label-font-size");
+const labelColorInput = document.getElementById("label-color");
+const labelOpacityInput = document.getElementById("label-opacity");
+const labelHaloColorInput = document.getElementById("label-halo-color");
+const labelHaloSizeInput = document.getElementById("label-halo-size");
+const labelBackgroundColorInput = document.getElementById("label-background-color");
+const labelBorderColorInput = document.getElementById("label-border-color");
+const labelBorderRadiusInput = document.getElementById("label-border-radius");
+const labelPlacementSelect = document.getElementById("label-placement");
+const labelLinePlacementSelect = document.getElementById("label-line-placement");
+const labelPolygonPlacementSelect = document.getElementById("label-polygon-placement");
+const labelOffsetXInput = document.getElementById("label-offset-x");
+const labelOffsetYInput = document.getElementById("label-offset-y");
+const labelRotationInput = document.getElementById("label-rotation");
+const labelMinZoomInput = document.getElementById("label-min-zoom");
+const labelMaxZoomInput = document.getElementById("label-max-zoom");
+const labelPriorityInput = document.getElementById("label-priority");
+const labelBoldInput = document.getElementById("label-bold");
+const labelItalicInput = document.getElementById("label-italic");
+const labelUnderlineInput = document.getElementById("label-underline");
+const labelShadowInput = document.getElementById("label-shadow");
+const labelAvoidOverlapInput = document.getElementById("label-avoid-overlap");
 const applySymbologyBtn = document.getElementById("apply-symbology-btn");
 const resetSymbologyBtn = document.getElementById("reset-symbology-btn");
 const interpolationModal = document.getElementById("interpolation-modal");
@@ -179,9 +245,11 @@ const brandLogoShell = document.getElementById("brand-logo-shell");
 const loadedLayers = [];
 let layerCount = 0;
 let activeEditableLayerId = "";
+let selectedTableLayerId = "";
 let selectedFeatureContext = null;
 let exportTargetLayerId = "";
 let dragDepth = 0;
+let isDraggingLayer = false; // true while a layer card reorder drag is active
 let isResizingTable = false;
 let activeSymbologyLayerId = "";
 let activeInterpolationLayerId = "";
@@ -220,6 +288,8 @@ const CSV_ANALYSIS_SAMPLE_LIMIT = 50000;
 const CSV_PREVIEW_SAMPLE_LIMIT = 20000;
 const CSV_GRID_TILE_ZOOM = 8;
 const CSV_CHUNK_SIZE_BYTES = 1024 * 1024 * 2;
+const VECTOR_EDIT_FEATURE_LIMIT = 5000;
+const VECTOR_GEOMETRY_KINDS = ["point", "line", "polygon"];
 
 math.import(
   {
@@ -236,43 +306,135 @@ math.import(
 
 const drawWorkspace = new L.FeatureGroup().addTo(map);
 
-const drawControl = new L.Control.Draw({
-  edit: {
-    featureGroup: drawWorkspace,
-    remove: true,
-  },
-  draw: {
-    polyline: {
-      shapeOptions: {
-        color: "#43c2ff",
-        weight: 3,
-      },
-    },
-    polygon: {
-      allowIntersection: false,
-      showArea: true,
-      shapeOptions: {
-        color: "#1db7a6",
-        weight: 3,
-        fillColor: "#1db7a6",
-        fillOpacity: 0.24,
-      },
-    },
-    rectangle: {
-      shapeOptions: {
-        color: "#ffb454",
-        weight: 3,
-        fillColor: "#ffb454",
-        fillOpacity: 0.18,
-      },
-    },
-    circle: false,
-    circlemarker: false,
-    marker: true,
-  },
-});
+function getGeometryKindFromType(type) {
+  if (typeof type !== "string") {
+    return "unknown";
+  }
+  if (type.includes("Point")) return "point";
+  if (type.includes("LineString")) return "line";
+  if (type.includes("Polygon")) return "polygon";
+  return "unknown";
+}
 
-map.addControl(drawControl);
+function collectGeometryKindsFromGeometry(geometry, kinds = new Set()) {
+  if (!geometry) {
+    return kinds;
+  }
+
+  if (geometry.type === "GeometryCollection") {
+    (geometry.geometries || []).forEach((item) => collectGeometryKindsFromGeometry(item, kinds));
+    return kinds;
+  }
+
+  const kind = getGeometryKindFromType(geometry.type);
+  if (VECTOR_GEOMETRY_KINDS.includes(kind)) {
+    kinds.add(kind);
+  }
+  return kinds;
+}
+
+function inferVectorGeometryKind(geojson) {
+  const kinds = new Set();
+  (geojson?.features || []).forEach((feature) => {
+    collectGeometryKindsFromGeometry(feature.geometry, kinds);
+  });
+
+  if (kinds.size === 1) {
+    return Array.from(kinds)[0];
+  }
+  if (kinds.size > 1) {
+    return "mixed";
+  }
+  return "unknown";
+}
+
+function normalizeVectorGeometryKind(kind, fallback = "unknown") {
+  return VECTOR_GEOMETRY_KINDS.includes(kind) || kind === "mixed" || kind === "unknown"
+    ? kind
+    : fallback;
+}
+
+function getLayerGeometryKind(layerRecord) {
+  if (!layerRecord || layerRecord.kind !== "vector") {
+    return "unknown";
+  }
+
+  const storedKind = normalizeVectorGeometryKind(layerRecord.geometryKind, "");
+  if (storedKind && storedKind !== "unknown") {
+    return storedKind;
+  }
+  return inferVectorGeometryKind(layerRecord.geojson);
+}
+
+function getGeometryKindLabel(kind) {
+  if (kind === "point") return "Point";
+  if (kind === "line") return "Line";
+  if (kind === "polygon") return "Polygon";
+  if (kind === "mixed") return "Mixed geometry";
+  return "Unknown geometry";
+}
+
+function isFeatureAllowedForLayer(layerRecord, feature) {
+  const layerKind = getLayerGeometryKind(layerRecord);
+  if (layerKind === "mixed" || layerKind === "unknown") {
+    return true;
+  }
+  return getGeometryKindFromType(feature?.geometry?.type) === layerKind;
+}
+
+function createDrawControlForGeometry(layerRecord = null) {
+  const kind = getLayerGeometryKind(layerRecord);
+  const allowPoint = kind === "point" || kind === "mixed" || kind === "unknown";
+  const allowLine = kind === "line" || kind === "mixed" || kind === "unknown";
+  const allowPolygon = kind === "polygon" || kind === "mixed" || kind === "unknown";
+
+  return new L.Control.Draw({
+    edit: {
+      featureGroup: drawWorkspace,
+      remove: true,
+    },
+    draw: {
+      polyline: allowLine
+        ? {
+            shapeOptions: {
+              color: "#43c2ff",
+              weight: 3,
+            },
+          }
+        : false,
+      polygon: allowPolygon
+        ? {
+            allowIntersection: false,
+            showArea: true,
+            shapeOptions: {
+              color: "#1db7a6",
+              weight: 3,
+              fillColor: "#1db7a6",
+              fillOpacity: 0.24,
+            },
+          }
+        : false,
+      rectangle: allowPolygon
+        ? {
+            shapeOptions: {
+              color: "#ffb454",
+              weight: 3,
+              fillColor: "#ffb454",
+              fillOpacity: 0.18,
+            },
+          }
+        : false,
+      circle: false,
+      circlemarker: false,
+      marker: allowPoint,
+    },
+  });
+}
+
+let drawControl = null;
+
+// Draw toolbar is created on demand — only added to the map when a layer
+// enters edit mode, so it never shows while no layer is being edited.
 
 const interpolationLegendControl = L.control({ position: "bottomright" });
 
@@ -296,19 +458,11 @@ const defaultStyle = (color) => ({
 const EARTH_RADIUS_METERS = 6378137;
 
 function createDefaultStyleConfig(color) {
-  return {
-    mode: "single",
-    field: "",
-    singleColor: color,
-    categorized: {
-      valueColors: {},
-    },
-    graduated: {
-      ramp: "teal-blue",
-      method: "equal",
-      classCount: 5,
-    },
-  };
+  return VectorStyleManager.createDefaultStyleConfig(color);
+}
+
+function createDefaultLabelConfig() {
+  return VectorStyleManager.createDefaultLabelConfig();
 }
 
 function createDefaultFilterConfig() {
@@ -371,7 +525,8 @@ function isLargeCsvLayerRecord(layerRecord) {
 }
 
 function isEditableLayerRecord(layerRecord) {
-  return isVectorLayerRecord(layerRecord) && !isLargeCsvLayerRecord(layerRecord);
+  const featureCount = layerRecord?.geojson?.features?.length || layerRecord?.featureCount || 0;
+  return isVectorLayerRecord(layerRecord) && !isLargeCsvLayerRecord(layerRecord) && featureCount <= VECTOR_EDIT_FEATURE_LIMIT;
 }
 
 function getStoredThemePreference() {
@@ -1323,20 +1478,10 @@ function createSpatialCalculatorHelpers(feature) {
 }
 
 function createMarkerIcon(color) {
-  return L.divIcon({
-    className: "custom-point-icon",
-    html: `<span style="
-      display:block;
-      width:14px;
-      height:14px;
-      border-radius:50%;
-      background:${color};
-      border:2px solid white;
-      box-shadow:0 0 0 2px rgba(6, 12, 24, 0.45);
-    "></span>`,
-    iconSize: [18, 18],
-    iconAnchor: [9, 9],
-  });
+  return VectorStyleManager.createPointIcon(
+    { color, styleConfig: createDefaultStyleConfig(color) },
+    { geometry: { type: "Point" }, properties: {} }
+  );
 }
 
 function cloneGeoJSON(geojson) {
@@ -1353,3 +1498,46 @@ function collectFieldNamesFromGeoJSON(geojson) {
   return Array.from(fieldSet).sort();
 }
 
+
+// ─── Edit History (Undo / Redo) ───────────────────────────────────────────────
+// Lightweight per-session history stack tied to the active editable layer.
+// A snapshot is a deep clone of the layer's geojson at a point in time.
+// The stack is cleared whenever the active editable layer changes.
+
+const EDIT_HISTORY_LIMIT = 50;
+
+let _editHistoryStack = [];  // array of { layerId, geojson } snapshots
+let _editHistoryCursor = -1; // points to the "current" state
+
+function pushEditSnapshot(layerRecord) {
+  if (!layerRecord) return;
+  // Drop any redo states ahead of cursor
+  _editHistoryStack = _editHistoryStack.slice(0, _editHistoryCursor + 1);
+  _editHistoryStack.push({ layerId: layerRecord.id, geojson: cloneGeoJSON(layerRecord.geojson) });
+  if (_editHistoryStack.length > EDIT_HISTORY_LIMIT) {
+    _editHistoryStack.shift();
+  }
+  _editHistoryCursor = _editHistoryStack.length - 1;
+}
+
+function clearEditHistory() {
+  _editHistoryStack = [];
+  _editHistoryCursor = -1;
+}
+
+function canUndoEdit() {
+  return _editHistoryCursor > 0;
+}
+
+function canRedoEdit() {
+  return _editHistoryCursor < _editHistoryStack.length - 1;
+}
+
+function getEditHistoryCursor() { return _editHistoryCursor; }
+function getEditHistoryStack()  { return _editHistoryStack; }
+
+function applyEditHistorySnapshot(snapshot, layerRecord) {
+  layerRecord.geojson = cloneGeoJSON(snapshot.geojson);
+  layerRecord.fields = collectFieldNamesFromGeoJSON(layerRecord.geojson);
+  layerRecord.featureCount = layerRecord.geojson.features.length;
+}
