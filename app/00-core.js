@@ -716,12 +716,12 @@ function animateBrandLogo(shell) {
     return;
   }
 
-  // const svg = shell.querySelector("svg");
-  // const baseText = svg?.querySelector(".logo-base");
-  // const overlayText = svg?.querySelector(".logo-overlay");
-  // if (!svg || !baseText || !overlayText) {
-  //   return;
-  // }
+  const svg = shell.querySelector("svg");
+  const baseText = svg?.querySelector(".logo-base");
+  const overlayText = svg?.querySelector(".logo-overlay");
+  if (!svg || !baseText || !overlayText) {
+    return;
+  }
 
   const totalLength =
     typeof overlayText.getComputedTextLength === "function" ? overlayText.getComputedTextLength() : 900;
@@ -766,20 +766,15 @@ function animateBrandLogo(shell) {
   });
 }
 
-async function initializeBrandLogo() {
+function initializeBrandLogo() {
   if (!brandLogoShell) {
     return;
   }
 
-  let svgMarkup = INLINE_BRAND_LOGO;
-  try {
-    const response = await fetch("./Logo.svg");
-    if (response.ok) {
-      svgMarkup = await response.text();
-    }
-  } catch (error) {
-    svgMarkup = INLINE_BRAND_LOGO;
-  }
+  // Always use the inline hardcoded logo — never fetch from disk/repo.
+  // An external Logo.svg in the repository (e.g. on GitHub Pages) may carry
+  // a white background rect or opaque fill that breaks the frosted stage.
+  const svgMarkup = INLINE_BRAND_LOGO;
 
   brandLogoShell.innerHTML = svgMarkup;
   const svg = brandLogoShell.querySelector("svg");
