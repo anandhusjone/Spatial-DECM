@@ -4,7 +4,7 @@ const helpPages = {
   welcome: `<h3>Welcome to Spatial DECM</h3>
 <p>Spatial DECM is a free, browser-based map tool. You can open spatial files, view and edit your data, run analysis, and export results — all without installing any software.</p>
 <p><strong>Everything runs in your browser. Your files never leave your device.</strong></p>
-<p>Use the sidebar on the left to jump to any topic. Click a topic that has an arrow (▶) to see its subtopics.</p>
+<p>Use the sidebar on the left to jump to any topic.</p>
 <hr/>
 <p><strong>Quick start:</strong></p>
 <ol>
