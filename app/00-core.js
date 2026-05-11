@@ -716,12 +716,12 @@ function animateBrandLogo(shell) {
     return;
   }
 
-  const svg = shell.querySelector("svg");
-  const baseText = svg?.querySelector(".logo-base");
-  const overlayText = svg?.querySelector(".logo-overlay");
-  if (!svg || !baseText || !overlayText) {
-    return;
-  }
+  // const svg = shell.querySelector("svg");
+  // const baseText = svg?.querySelector(".logo-base");
+  // const overlayText = svg?.querySelector(".logo-overlay");
+  // if (!svg || !baseText || !overlayText) {
+  //   return;
+  // }
 
   const totalLength =
     typeof overlayText.getComputedTextLength === "function" ? overlayText.getComputedTextLength() : 900;
