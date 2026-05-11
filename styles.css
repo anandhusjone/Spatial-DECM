@@ -326,18 +326,19 @@ body {
 }
 
 /* ── Row 2: wordmark stage ── */
-/* NOTE: no backdrop-filter here — nesting it inside the panel's
-   own backdrop-filter breaks in GitHub Pages / cross-origin contexts
-   and falls back to solid white. No color-mix with 'transparent'
-   either — resolves incorrectly in some browsers. Use hardcoded rgba. */
+/* FIX: .sidebar has overflow:hidden which destroys backdrop-filter in
+   sandboxed/cross-origin contexts (GitHub Pages). color-mix with
+   'transparent' also collapses to white when filter is disabled.
+   Solution: fully opaque solid background — no backdrop-filter, no
+   transparency. Teal tint is baked into the rgba values directly. */
 .brand-wordmark-stage {
-  border-radius: 18px;
-  background: rgba(29, 183, 166, 0.07);
-  border: 1px solid rgba(29, 183, 166, 0.20);
+  border-radius: calc(var(--radius) - 2px);
+  background: #0d2035;
+  border: 1px solid rgba(29, 183, 166, 0.22);
   box-shadow:
-    inset 0 1px 0 rgba(29, 183, 166, 0.13),
-    inset 0 -1px 0 rgba(0, 0, 0, 0.08),
-    0 2px 8px rgba(0, 0, 0, 0.12);
+    inset 0 1px 0 rgba(29, 183, 166, 0.14),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.18),
+    0 2px 6px rgba(0, 0, 0, 0.22);
   padding: 10px 12px;
   display: flex;
   align-items: center;
@@ -345,14 +346,13 @@ body {
 }
 
 /* Light theme override */
-[data-theme="light"] .brand-wordmark-stage,
-.light .brand-wordmark-stage {
-  background: rgba(15, 152, 137, 0.07);
-  border-color: rgba(15, 152, 137, 0.20);
+:root[data-theme="light"] .brand-wordmark-stage {
+  background: #ddeef5;
+  border-color: rgba(15, 152, 137, 0.25);
   box-shadow:
-    inset 0 1px 0 rgba(15, 152, 137, 0.13),
+    inset 0 1px 0 rgba(15, 152, 137, 0.15),
     inset 0 -1px 0 rgba(0, 0, 0, 0.05),
-    0 2px 8px rgba(0, 0, 0, 0.07);
+    0 2px 6px rgba(60, 87, 117, 0.10);
 }
 
 /* Spatial-DECM wordmark shell */
