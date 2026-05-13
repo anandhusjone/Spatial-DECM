@@ -6,6 +6,10 @@ fileInput.addEventListener("change", (event) => {
 document.addEventListener("dragenter", (event) => {
   if (isDraggingLayer) return;
   event.preventDefault();
+  // If dragDepth is somehow non-zero at the start of a new drag session (e.g. a
+  // previous drag ended without a drop or dragleave), reset it so the overlay and
+  // depth counter stay in sync.
+  if (dragDepth < 0) dragDepth = 0;
   dragDepth += 1;
   updateGlobalDropOverlay(true);
 });
@@ -40,23 +44,48 @@ document.addEventListener("dragleave", (event) => {
 });
 
 document.addEventListener("drop", (event) => {
-  if (isDraggingLayer) return; // layer reorder — handled by card drop handler
+  // Always clear isDraggingLayer here as a safety net — if the layer-card dragend
+  // event failed to fire (e.g. rapid DOM re-render, browser quirk), this prevents
+  // the flag from staying true and silently blocking all future file drops.
+  if (isDraggingLayer) {
+    isDraggingLayer = false;
+    return; // layer reorder drop — actual handling is on the card's own drop listener
+  }
   event.preventDefault();
   dragDepth = 0;
   updateGlobalDropOverlay(false);
   closeLayerContextMenu();
 
-  // dataTransfer.files is empty for .geojson in some browsers (e.g. Chrome on
-  // certain OSes) because .geojson has no registered MIME type. Fall back to
-  // dataTransfer.items, which always exposes the File objects.
-  const files = event.dataTransfer.files?.length
-    ? event.dataTransfer.files
-    : Array.from(event.dataTransfer.items || [])
-        .filter((item) => item.kind === "file")
-        .map((item) => item.getAsFile())
-        .filter(Boolean);
+  // .geojson has no registered MIME type on most OSes, so Chrome (especially on
+  // Windows) may leave dataTransfer.files empty AND return null from getAsFile().
+  // Strategy:
+  //   1. Use dataTransfer.files if it has entries (fastest, most reliable).
+  //   2. Fall back to dataTransfer.items → getAsFile() (covers Chrome on macOS/Linux).
+  //   3. For any item where getAsFile() returned null, use webkitGetAsEntry().file()
+  //      which works even when the OS has no MIME type registered for the extension
+  //      (covers Chrome on Windows for .geojson and similar unregistered extensions).
+  const items = Array.from(event.dataTransfer.items || []).filter((item) => item.kind === "file");
 
-  handleFiles(files);
+  if (event.dataTransfer.files?.length) {
+    handleFiles(event.dataTransfer.files);
+  } else {
+    // Attempt getAsFile() for all items; for any that return null, fall back to
+    // the FileSystem Entry API (webkitGetAsEntry) which is immune to MIME issues.
+    const resolveItem = (item) => {
+      const file = item.getAsFile();
+      if (file) return Promise.resolve(file);
+      // getAsFile() returned null — use the entry API as a fallback.
+      const entry = item.webkitGetAsEntry?.();
+      if (entry?.isFile) {
+        return new Promise((resolve) => entry.file(resolve, () => resolve(null)));
+      }
+      return Promise.resolve(null);
+    };
+
+    Promise.all(items.map(resolveItem)).then((resolved) => {
+      handleFiles(resolved.filter(Boolean));
+    });
+  }
 });
 
 clearAllBtn.addEventListener("click", () => {

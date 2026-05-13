@@ -48,7 +48,16 @@ function normalizeGeoJSON(geojson) {
   });
 
   if (sourceCrs.code !== CRSManager.DEFAULT_CRS) {
-    featureCollection = CRSManager.reprojectGeoJSON(featureCollection, sourceCrs.code, CRSManager.DEFAULT_CRS);
+    if (!sourceCrs.isSupported) {
+      // Unrecognised CRS: per RFC 7946 §4, assume WGS84 rather than failing.
+      // Log a warning so the issue is visible in DevTools without breaking the import.
+      console.warn(
+        `[Spatial-DECM] Unrecognised CRS "${sourceCrs.code}" — assuming WGS84. ` +
+        "Re-export from your GIS tool with EPSG:4326 if coordinates look wrong."
+      );
+    } else {
+      featureCollection = CRSManager.reprojectGeoJSON(featureCollection, sourceCrs.code, CRSManager.DEFAULT_CRS);
+    }
   }
   featureCollection.crs = {
     type: "name",
@@ -1921,10 +1930,53 @@ async function parseSpatialFile(file) {
   const fileName = file.name;
   const extension = getFileExtension(fileName);
 
+  // Helper: detect GeoJSON by MIME type or by peeking at the text content.
+  // Used as a fallback when the file arrives without a recognised extension
+  // (e.g. Chrome on Windows strips the extension for unregistered MIME types).
+  async function looksLikeGeoJSON(text) {
+    try {
+      const parsed = JSON.parse(text);
+      return (
+        parsed?.type === "FeatureCollection" ||
+        parsed?.type === "Feature" ||
+        parsed?.type === "GeometryCollection" ||
+        parsed?.type === "Point" ||
+        parsed?.type === "MultiPoint" ||
+        parsed?.type === "LineString" ||
+        parsed?.type === "MultiLineString" ||
+        parsed?.type === "Polygon" ||
+        parsed?.type === "MultiPolygon"
+      );
+    } catch {
+      return false;
+    }
+  }
+
   if (extension === "geojson" || extension === "json") {
-    const text = await fileToText(file);
+    const raw = await fileToText(file);
+    // Strip UTF-8 BOM (\uFEFF) — editors like QGIS and ArcGIS occasionally
+    // write a BOM at the start of GeoJSON files, which breaks JSON.parse.
+    const text = raw.charCodeAt(0) === 0xfeff ? raw.slice(1) : raw;
+    let parsed;
+    try {
+      parsed = JSON.parse(text);
+    } catch (jsonError) {
+      throw new Error(
+        `The file does not contain valid JSON. Check it with a validator like jsonlint.com. ` +
+        `(Parser said: ${jsonError.message})`
+      );
+    }
+    if (!parsed || typeof parsed !== "object") {
+      throw new Error("The file is valid JSON but is not a GeoJSON object.");
+    }
+    if (!parsed.type) {
+      throw new Error(
+        "The file is valid JSON but is missing a \"type\" field — " +
+        "it may not be a GeoJSON file."
+      );
+    }
     return {
-      data: JSON.parse(text),
+      data: parsed,
       sourceType: "GeoJSON",
     };
   }
@@ -1987,6 +2039,36 @@ async function parseSpatialFile(file) {
       sourceType: rasterData.sourceType,
       importKind: "geotiff",
     };
+  }
+
+  // Last-resort content sniffing: the file arrived without a recognised extension
+  // (can happen on Windows Chrome for unregistered types such as .geojson).
+  // Try reading it as text and check whether it looks like GeoJSON or XML.
+  if (!extension || extension === fileName.toLowerCase()) {
+    let text;
+    try {
+      const raw = await fileToText(file);
+      text = raw.charCodeAt(0) === 0xfeff ? raw.slice(1) : raw;
+    } catch {
+      // If we can't read as text it's definitely not a format we can sniff.
+    }
+    if (text) {
+      if (await looksLikeGeoJSON(text)) {
+        return { data: JSON.parse(text), sourceType: "GeoJSON" };
+      }
+      const trimmed = text.trimStart();
+      if (trimmed.startsWith("<")) {
+        const xml = new DOMParser().parseFromString(text, "text/xml");
+        if (!xml.querySelector("parsererror")) {
+          if (xml.querySelector("kml")) {
+            return { data: toGeoJSON.kml(xml), sourceType: "KML" };
+          }
+          if (xml.querySelector("gpx")) {
+            return { data: toGeoJSON.gpx(xml), sourceType: "GPX" };
+          }
+        }
+      }
+    }
   }
 
   throw new Error(`Unsupported file type: .${extension || "unknown"}`);
@@ -2950,6 +3032,8 @@ function renderLayerList() {
     });
     wrapper.addEventListener("dragend", () => {
       isDraggingLayer = false;
+      dragDepth = 0; // reset any accumulated dragenter counts from the layer reorder drag
+      updateGlobalDropOverlay(false);
       wrapper.draggable = false;
       wrapper.classList.remove("dragging");
       document.querySelectorAll(".layer-card.drag-over").forEach((el) => el.classList.remove("drag-over"));

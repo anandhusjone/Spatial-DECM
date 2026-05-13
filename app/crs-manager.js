@@ -9,11 +9,46 @@
     }
 
     const text = String(code).trim();
+
+    // OGC URN: urn:ogc:def:crs:EPSG::4326 or urn:ogc:def:crs:EPSG:6.18.3:4326
+    // Produced by QGIS, ArcGIS, GDAL, GeoServer exports.
+    const urnEpsgMatch = text.match(/urn:ogc:def:crs:EPSG:[^:]*:(\d+)/i);
+    if (urnEpsgMatch) {
+      return `EPSG:${urnEpsgMatch[1]}`;
+    }
+
+    // OGC URN: urn:ogc:def:crs:OGC:1.3:CRS84
+    const urnOgcMatch = text.match(/urn:ogc:def:crs:OGC:[^:]*:(CRS\d+|CRS84)/i);
+    if (urnOgcMatch) {
+      return `OGC:${urnOgcMatch[1].toUpperCase()}`;
+    }
+
+    // OGC HTTP URL: http://www.opengis.net/def/crs/EPSG/0/4326
+    // Used by GeoServer WFS, MapServer, and OGC API outputs.
+    const httpEpsgMatch = text.match(/opengis\.net\/def\/crs\/EPSG\/[^/]*\/(\d+)/i);
+    if (httpEpsgMatch) {
+      return `EPSG:${httpEpsgMatch[1]}`;
+    }
+
+    // OGC HTTP URL: http://www.opengis.net/def/crs/OGC/1.3/CRS84
+    const httpOgcMatch = text.match(/opengis\.net\/def\/crs\/OGC\/[^/]*\/(CRS\d+|CRS84)/i);
+    if (httpOgcMatch) {
+      return `OGC:${httpOgcMatch[1].toUpperCase()}`;
+    }
+
+    // SRID=4326 (PostGIS, SQLite/SpatiaLite)
+    const sridMatch = text.match(/^SRID=(\d+)$/i);
+    if (sridMatch) {
+      return `EPSG:${sridMatch[1]}`;
+    }
+
+    // Bare EPSG number or EPSG:N / EPSG/N
     const epsgMatch = text.match(/EPSG[:/ ]?(\d+)/i);
     if (epsgMatch) {
       return `EPSG:${epsgMatch[1]}`;
     }
 
+    // Plain integer → treat as EPSG code
     if (/^\d+$/.test(text)) {
       return `EPSG:${text}`;
     }
@@ -474,7 +509,14 @@
     name: "WGS 84",
     type: "geographic",
     units: "degrees",
-    aliases: ["CRS:84", "OGC:CRS84"],
+    aliases: [
+      "CRS:84",
+      "OGC:CRS84",
+      "WGS84",
+      "WGS 84",
+      "GCS_WGS_1984",        // ArcGIS / Esri naming
+      "GEOGRAPHIC CS: GCS_WGS_1984",
+    ],
   });
   registerCrs(WEB_MERCATOR, "+proj=merc +a=6378137 +b=6378137 +lat_ts=0 +lon_0=0 +x_0=0 +y_0=0 +k=1 +units=m +nadgrids=@null +wktext +no_defs +type=crs", {
     name: "WGS 84 / Pseudo-Mercator",
