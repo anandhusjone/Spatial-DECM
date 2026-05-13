@@ -2792,3 +2792,277 @@ details[open] .advanced-style-summary::before {
   flex-shrink: 0;
   cursor: pointer;
 }
+
+/* ================================================================
+   Viewshed Analysis Floating Panel  (#viewshed-panel)
+   ================================================================ */
+
+/* ── Button states ── */
+#viewshed-btn.vs-active {
+  color: #00ff78;
+  border-color: rgba(0, 255, 120, 0.45);
+  background: rgba(0, 255, 120, 0.08);
+}
+
+#viewshed-btn.vs-picking {
+  color: #ffb454;
+  border-color: rgba(255, 180, 84, 0.5);
+  animation: locating-pulse 1s ease-in-out infinite;
+}
+
+/* ── Panel shell ── */
+.vs-panel {
+  position: fixed;
+  top: 80px;
+  left: 70px;
+  z-index: 800;
+  width: 280px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--panel);
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(12px);
+  user-select: none;
+  overflow: hidden;
+}
+
+.vs-panel[hidden] {
+  display: none;
+}
+
+/* ── Header / drag handle ── */
+.vs-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px 9px;
+  cursor: grab;
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--panel) 85%, transparent);
+}
+
+.vs-panel-header:active {
+  cursor: grabbing;
+}
+
+.vs-panel-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.vs-panel-close {
+  padding: 2px 6px;
+  font-size: 13px;
+  line-height: 1;
+  min-width: unset;
+  color: var(--text-muted);
+}
+
+.vs-panel-close:hover {
+  color: var(--text);
+}
+
+/* ── Body ── */
+.vs-panel-body {
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* ── Form atoms ── */
+.vs-field-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.vs-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.vs-global-dem-row {
+  background: color-mix(in srgb, var(--accent, #00ff78) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent, #00ff78) 25%, transparent);
+  border-radius: 6px;
+  padding: 7px 9px;
+  margin-bottom: 2px;
+}
+
+.vs-tile-status {
+  font-size: 11px;
+  color: var(--text-muted);
+  text-align: center;
+  padding: 2px 0 0;
+}
+
+.vs-label-hint {
+  font-size: 10px;
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+  opacity: 0.7;
+}
+
+
+
+.vs-select {
+  width: 100%;
+}
+
+.vs-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.vs-unit-input {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.vs-unit-input input.dark-input {
+  padding-right: 30px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.vs-unit {
+  position: absolute;
+  right: 9px;
+  font-size: 11px;
+  color: var(--text-muted);
+  pointer-events: none;
+}
+
+/* ── Checkbox row ── */
+.vs-checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.vs-checkbox {
+  width: 14px;
+  height: 14px;
+  accent-color: var(--accent);
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.vs-checkbox-label {
+  font-size: 12px;
+  color: var(--text);
+  cursor: pointer;
+  line-height: 1.4;
+}
+
+/* ── Pick row ── */
+.vs-pick-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.vs-pick-btn {
+  font-size: 12px;
+  padding: 5px 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.vs-pick-btn.is-picking {
+  color: #ffb454;
+  border-color: rgba(255, 180, 84, 0.5);
+}
+
+.vs-coords {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vs-coords.is-set {
+  color: var(--accent);
+}
+
+/* ── Error message ── */
+.vs-error {
+  font-size: 12px;
+  color: #ff6b6b;
+  background: rgba(255, 107, 107, 0.08);
+  border: 1px solid rgba(255, 107, 107, 0.25);
+  border-radius: 7px;
+  padding: 7px 10px;
+  margin: 0;
+  line-height: 1.4;
+}
+
+/* ── Progress indicator ── */
+.vs-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.vs-progress-bar {
+  height: 3px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, var(--accent) 0%, #00ff78 100%);
+  animation: vs-indeterminate 1.4s ease-in-out infinite;
+}
+
+@keyframes vs-indeterminate {
+  0%   { transform: translateX(-100%) scaleX(0.4); }
+  50%  { transform: translateX(60%)   scaleX(0.7); }
+  100% { transform: translateX(200%)  scaleX(0.4); }
+}
+
+.vs-progress-label {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+/* ── Apply button ── */
+.vs-apply-btn {
+  width: 100%;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 0;
+  color: #00ff78;
+  border-color: rgba(0, 255, 120, 0.35);
+}
+
+.vs-apply-btn:hover:not(:disabled) {
+  background: rgba(0, 255, 120, 0.08);
+  border-color: rgba(0, 255, 120, 0.65);
+}
+
+.vs-apply-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* ── Map cursor when picking observer ── */
+.map-picking-observer #map {
+  cursor: crosshair !important;
+}
