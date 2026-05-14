@@ -142,7 +142,7 @@ When *Use Global DEM* is ticked the app fetches RGB-encoded Terrarium elevation 
 
 **Algorithm** — Radial Bresenham line-of-sight sweep (`app/60-viewshed.js`). For every pixel on the DEM perimeter a ray is cast from the observer outward. A cell is marked visible if its angle of elevation from the observer equals or exceeds the running maximum angle seen on that ray so far. Optional Earth-curvature and atmospheric-refraction correction uses k = 0.13.
 
-**Output** — A PNG image overlay layer named *Viewshed* is added to the map. Visible cells are painted in semi-transparent green (`rgba(0, 255, 120, 0.45)`). The map legend shows two swatches (Visible / Not visible).
+**Output** — An raster overlay layer named *Viewshed* is added to the map. Visible cells are painted in semi-transparent green (`rgba(0, 255, 120, 0.45)`). The map legend shows two swatches (Visible / Not visible).
 
 ## CRS handling
 
