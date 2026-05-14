@@ -82,9 +82,6 @@ GeoJSON · KML · Zipped Shapefile
 
 <br/>
 
-
-<br/>
-
 ## Supported Formats
 
 | Format | Notes |
@@ -94,11 +91,10 @@ GeoJSON · KML · Zipped Shapefile
 | `.gpx` | GPS Exchange Format |
 | `.zip` | Zipped shapefile bundle — must include `.shp`, `.shx`, `.dbf` |
 | `.shp` + sidecars | Loose shapefile import — select or drag the matching `.shp`, `.dbf`, `.shx`, `.prj`, and `.cpg` files together |
-| `.csv` | Must include lat/lon columns (`lat`, `lon`, `lng`, `x`, `y`) — or a single combined column (`coordinates`, `coords`, `location`, `point`, etc.) with values like `"8.42, 77.04"` |
+| `.csv` | Lat/lon columns (`lat`, `lon`, `lng`, `x`, `y`) **or** a combined column (`coordinates`, `coords`, `location`, `point`, etc.) with values like `"8.42, 77.04"`. Delimiter auto-detected: comma, semicolon, tab, or pipe. Large files (> 50 000 points) use streaming mode — see [Large CSV files](#large-csv-files). |
 | `.tif` / `.tiff` | GeoTIFF raster with tiled browser rendering, raster metadata, pixel sampling, NoData handling, and WGS84 / Web Mercator / WGS84 UTM alignment. Also used as input for local viewshed analysis. |
 
 <br/>
-
 
 ## Usage
 
@@ -112,16 +108,35 @@ GeoJSON · KML · Zipped Shapefile
 > All processing happens **client-side**. Your data never leaves your browser.  
 > Large datasets may run slower due to browser memory limits.
 
+<br/>
+
+## Large CSV files
+
+CSV files are parsed in a background worker so the UI stays responsive during import. The worker reads the file in 2 MB chunks, detects the delimiter automatically, and applies a streaming reservoir-sample / tile-grid algorithm:
+
+| Point count | Mode | What you see on the map |
+|-------------|------|-------------------------|
+| ≤ 50 000 | **Full vector** | Every point rendered as a normal vector layer |
+| 50 001 – 250 000 | **Sample preview** | Up to 20 000 randomly sampled points (reservoir sampling) |
+| > 250 000 | **Grid preview** | One polygon per map tile (zoom 8) showing the point count for that cell |
+
+- The layer card shows the total point count from the file, not just the displayed points.
+- A separate **analysis sample** of up to 50 000 points (reservoir-sampled) is kept in memory for heatmap, interpolation, and field-calculator operations.
+- Filtering and query-builder rules are skipped for large CSV layers (filters apply to the full dataset on re-import instead).
+- Export reflects the display mode (`sample-preview` or `grid-preview`); re-import the original file and keep it under 50 000 points to export the full dataset.
+
+<br/>
+
 ## Viewshed Analysis
 
-Viewshed analysis computes which areas of the terrain are visible from a chosen observer point. Click the **Viewshed** toolbar button to open the analysis panel.
+Viewshed analysis computes which areas of the terrain are visible from a chosen observer point. Click the **Viewshed** toolbar button to open the panel.
 
 **Elevation sources**
 
-| Mode | Source | Resolution | Auth required |
-|------|--------|-----------|---------------|
-| Local DEM | Any single-band GeoTIFF loaded into the layer panel | Native raster resolution | None |
-| Global DEM | [AWS Open Data — Terrain Tiles (Terrarium)](https://registry.opendata.aws/terrain-tiles/) | ~30 m/px at zoom 12 | None — public, CORS-enabled |
+| Mode | Source | Resolution |
+|------|--------|-----------|
+| Local DEM | Any single-band GeoTIFF loaded into the layer panel | Native raster resolution |
+| Global DEM | [AWS Open Data — Terrain Tiles (Terrarium)](https://registry.opendata.aws/terrain-tiles/) | ~30 m/px at zoom 12 |
 
 When *Use Global DEM* is ticked the app fetches RGB-encoded Terrarium elevation tiles (`https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png`) and stitches them into a single in-memory float grid before running the algorithm. A maximum of 64 tiles is fetched per run (≈ 50 km radius at most latitudes).
 
@@ -133,6 +148,8 @@ When *Use Global DEM* is ticked the app fetches RGB-encoded Terrarium elevation 
 
 Coordinate system detection, validation, transformation, and layer reprojection are centralized in `app/crs-manager.js`. The app uses Proj4 when available, includes built-in support for WGS84, Web Mercator, and WGS84 UTM zones, and exposes registration hooks for custom CRS definitions. Vector imports with declared CRS metadata are normalized to the map CRS, and GeoTIFF rasters use the same CRS service for alignment and sampling.
 
+GeoJSON files that declare an unrecognised CRS are imported with a console warning and treated as WGS84 per RFC 7946 §4, rather than rejected.
+
 ## Styling and labeling
 
 Vector styling and labeling are centralized in `app/vector-style-manager.js`. Point layers support circle, square, triangle, star, cross, and custom icon symbols with size, fill, stroke, and opacity controls. Line layers support width, color, opacity, dash styles, custom dash patterns, caps, and joins. Polygon layers support fill opacity, outline-only rendering, stroke color, width, opacity, and stroke styles.
@@ -141,6 +158,21 @@ Labels can be enabled per layer with a field or `{field}` template expression, f
 
 <br/>
 
+## Source layout
+
+| File | Role |
+|------|------|
+| `app/00-core.js` | Global constants, shared helpers, theme/basemap, modal and status utilities |
+| `app/10-analysis-layers.js` | Layer management, CSV parsing & streaming worker, GeoJSON normalisation, interpolation, heatmap, export |
+| `app/20-tools-ui.js` | Toolbar, layer list UI, style/label panels, filter/query builder |
+| `app/30-bootstrap.js` | App initialisation, file-drop handling, drag-and-drop wiring |
+| `app/40-project.js` | Project save/load (JSON bundle), per-layer GeoJSON export |
+| `app/50-map-tools.js` | Draw / edit tools, geometry snapping, attribute table |
+| `app/60-viewshed.js` | Viewshed analysis panel, tile fetching, line-of-sight algorithm |
+| `app/99-help-content.js` | In-app help text |
+| `app/calculator/` | Field calculator — tokenizer, parser, AST, evaluator, built-in function catalog |
+| `app/crs-manager.js` | CRS detection, Proj4 reprojection, UTM zone helpers |
+| `app/vector-style-manager.js` | Symbol rendering, categorised/graduated/rule-based styling, label engine |
 
 <br/>
 
@@ -153,18 +185,12 @@ Labels can be enabled per layer with a field or `{field}` template expression, f
 
 <br/>
 
-
-
-<br/>
-
 ## Philosophy
 
  Spatial DECM is **not** a replacement for QGIS or ArcGIS.  
  It's built for the moments when those feel like overkill.
 
 <br/>
-
-
 
 <div align="center">
   <sub>Built for the browser. Built for simplicity.</sub>
