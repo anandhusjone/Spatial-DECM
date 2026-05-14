@@ -157,6 +157,7 @@
     });
 
     document.addEventListener("mouseup", () => {
+      if (dragging) _justDragged = true;
       dragging = false;
     });
   })();
@@ -367,7 +368,7 @@
 
     if (active) {
       pickBtn.innerHTML = PICK_ICON_SVG + " Click on map…";
-      map.once("click", onMapPickClick);
+      map.on("click", onMapPickClick);
       updateStatus("Click on the map to set the observer location. Press Escape to cancel.");
     } else {
       pickBtn.innerHTML = PICK_ICON_SVG + " Pick from Map";
@@ -379,7 +380,12 @@
     setPicking(false);
   }
 
+  // Track whether the panel was just dragged so we can ignore the
+  // spurious map click that fires immediately after a drag-end.
+  let _justDragged = false;
+
   function onMapPickClick(e) {
+    if (_justDragged) { _justDragged = false; return; }
     setPicking(false);
     setObserverLocation(e.latlng);
     updateStatus("Observer location set.");
@@ -577,16 +583,20 @@
 
         // Earth curvature + atmospheric refraction correction (drop in metres)
         const curv  = curvature ? (dist * dist / (2 * EARTH_RADIUS_M)) * (1 - REFRACTION_K) : 0;
-        const targetElev = elev + tgtH - curv;
+        // terrainAngle: bare terrain angle from observer -- blocks LOS for
+        // cells further along the ray. maxAngle tracks this, not tgtH.
+        const terrainAngle = (elev - curv - observerElev) / dist;
 
-        const angle = (targetElev - observerElev) / dist;
+        // visAngle: angle to the top of a target of height tgtH on this
+        // cell. Visible when this clears the current horizon.
+        const visAngle = (elev + tgtH - curv - observerElev) / dist;
 
-        if (angle >= maxAngle) {
+        if (visAngle >= maxAngle) {
           result[idx] = 1;
-          maxAngle = angle;
         } else {
           result[idx] = 0;
         }
+        if (terrainAngle > maxAngle) maxAngle = terrainAngle;
 
         if (r === r1 && c === c1) break;
       }
@@ -625,9 +635,17 @@
 
   // ── Layer management ──────────────────────────────────────────
 
+  // When set to true, onRemove should skip clearing the observer marker
+  // because the layer is being replaced internally (re-run), not deleted.
+  let _replacingViewshed = false;
+
   function removeExistingViewshedLayer() {
     const existing = loadedLayers.find((lr) => lr.name === VIEWSHED_LAYER_NAME);
-    if (existing) removeLayer(existing.id);
+    if (existing) {
+      _replacingViewshed = true;
+      removeLayer(existing.id);
+      _replacingViewshed = false;
+    }
   }
 
   /**
@@ -684,6 +702,15 @@
         bounds,
       },
       isDerived: true,
+      onRemove() {
+        // Skip cleanup when we are just replacing the layer after a re-run.
+        if (_replacingViewshed) return;
+        if (observerMarker) { map.removeLayer(observerMarker); observerMarker = null; }
+        if (radiusCircle)   { map.removeLayer(radiusCircle);   radiusCircle   = null; }
+        observerLatLng = null;
+        coordsDisplay.textContent = "";
+        coordsDisplay.classList.remove("is-set");
+      },
     };
   }
 

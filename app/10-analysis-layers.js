@@ -1510,6 +1510,24 @@ function updateInterpolationLegend() {
   }
 
   const metadata = visibleRasterLayer.rasterMetadata;
+
+  // Viewshed layers are binary (visible / not visible) — show a simple
+  // two-swatch legend instead of a continuous colour-ramp legend.
+  if (metadata.layerType === "viewshed") {
+    container.hidden = false;
+    container.innerHTML = `
+      <div class="map-legend-title">Viewshed</div>
+      <div class="map-legend-subtitle">${escapeHtml(metadata.methodLabel || "Line-of-Sight")}</div>
+      <div class="map-legend-swatches">
+        <span class="map-legend-swatch" style="background:rgba(0,255,120,0.45);border:1px solid rgba(0,255,120,0.7);"></span>
+        <span class="map-legend-swatch-label">Visible</span>
+        <span class="map-legend-swatch" style="background:transparent;border:1px solid var(--border);"></span>
+        <span class="map-legend-swatch-label">Not visible</span>
+      </div>
+    `;
+    return;
+  }
+
   const styleConfig = visibleRasterLayer.rasterStyleConfig;
   const rampStops = styleConfig?.mode === "gray"
     ? getInterpolationRampStops("gray")
@@ -2103,31 +2121,73 @@ function parseCsvAsGeoJSON(csvText) {
     "longitude_dd",
   ]);
 
+  // Combined coordinate column: "8.123, 77.456" or "8.123 77.456" etc.
+  const COMBINED_COORD_HEADERS_HI = [
+    "coordinates", "coordinate", "coords", "coord", "latlon", "latlng", "lonlat",
+  ];
+  const COMBINED_COORD_HEADERS_LO = ["location", "point", "position", "geo"];
+  function splitCombinedCoord(value) {
+    const parts = String(value ?? "").trim().split(/[\s,/]+/).filter(Boolean);
+    if (parts.length !== 2) return null;
+    const a = Number.parseFloat(parts[0]);
+    const b = Number.parseFloat(parts[1]);
+    if (!Number.isFinite(a) || !Number.isFinite(b)) return null;
+    if (Math.abs(a) <= 90 && Math.abs(b) <= 180) return { lat: a, lon: b };
+    if (Math.abs(b) <= 90 && Math.abs(a) <= 180) return { lat: b, lon: a };
+    return null;
+  }
+  // Scan in two tiers: high-confidence names first, then ambiguous ones.
+  // Verify each by sampling a data row so a "Location" column holding
+  // place-name text does not falsely match before "Coordinates".
+  let combinedCoordIndex = -1;
   if (latitudeIndex === -1 || longitudeIndex === -1) {
-    throw new Error("CSV must contain latitude and longitude columns.");
+    outer: for (const tier of [COMBINED_COORD_HEADERS_HI, COMBINED_COORD_HEADERS_LO]) {
+      for (let _i = 0; _i < headers.length; _i++) {
+        if (!tier.includes(headers[_i])) continue;
+        const sampleRow = rows.slice(1).find((r) => (r[_i] ?? "").trim() !== "");
+        if (sampleRow && splitCombinedCoord(sampleRow[_i])) {
+          combinedCoordIndex = _i;
+          break outer;
+        }
+      }
+    }
+  }
+
+  if ((latitudeIndex === -1 || longitudeIndex === -1) && combinedCoordIndex === -1) {
+    throw new Error(
+      "CSV must contain latitude and longitude columns, or a single combined coordinates column (e.g. \"8.42, 77.04\")."
+    );
   }
 
   const features = rows.slice(1).flatMap((row, index) => {
     const values = headers.map((_, headerIndex) => row[headerIndex] ?? "");
-    const latitudeValue = String(values[latitudeIndex] ?? "").trim();
-    const longitudeValue = String(values[longitudeIndex] ?? "").trim();
 
-    if (!latitudeValue && !longitudeValue) {
-      return [];
-    }
-
-    const lat = Number.parseFloat(latitudeValue);
-    const lon = Number.parseFloat(longitudeValue);
-
-    if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
-      throw new Error(`Invalid latitude/longitude in row ${index + 2}.`);
+    let lat, lon;
+    if (combinedCoordIndex !== -1) {
+      const parsed = splitCombinedCoord(values[combinedCoordIndex]);
+      if (!parsed) {
+        if (!String(values[combinedCoordIndex] ?? "").trim()) return [];
+        throw new Error(`Invalid coordinates in row ${index + 2}: "${values[combinedCoordIndex]}".`);
+      }
+      lat = parsed.lat;
+      lon = parsed.lon;
+    } else {
+      const latitudeValue = String(values[latitudeIndex] ?? "").trim();
+      const longitudeValue = String(values[longitudeIndex] ?? "").trim();
+      if (!latitudeValue && !longitudeValue) return [];
+      lat = Number.parseFloat(latitudeValue);
+      lon = Number.parseFloat(longitudeValue);
+      if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+        throw new Error(`Invalid latitude/longitude in row ${index + 2}.`);
+      }
     }
 
     const properties = {};
     headers.forEach((header, headerIndex) => {
-      if (headerIndex !== latitudeIndex && headerIndex !== longitudeIndex) {
-        properties[header || `column_${headerIndex + 1}`] = values[headerIndex] ?? "";
+      if (headerIndex === latitudeIndex || headerIndex === longitudeIndex || headerIndex === combinedCoordIndex) {
+        return;
       }
+      properties[header || `column_${headerIndex + 1}`] = values[headerIndex] ?? "";
     });
 
     return [
@@ -2168,6 +2228,21 @@ function getLargeCsvWorkerSource() {
     const CSV_CHUNK_SIZE_BYTES = ${CSV_CHUNK_SIZE_BYTES};
     const LATITUDE_HEADERS = ["latitude", "lat", "y", "y_coord", "ycoord", "lat_dd", "latitude_dd"];
     const LONGITUDE_HEADERS = ["longitude", "long", "lon", "lng", "x", "x_coord", "xcoord", "lon_dd", "longitude_dd"];
+    const COMBINED_COORD_HEADERS_HI = [
+      "coordinates", "coordinate", "coords", "coord", "latlon", "latlng", "lonlat",
+    ];
+    const COMBINED_COORD_HEADERS_LO = ["location", "point", "position", "geo"];
+
+    function splitCombinedCoord(value) {
+      const parts = String(value ?? "").trim().split(/[\\s,/]+/).filter(Boolean);
+      if (parts.length !== 2) return null;
+      const a = Number.parseFloat(parts[0]);
+      const b = Number.parseFloat(parts[1]);
+      if (!Number.isFinite(a) || !Number.isFinite(b)) return null;
+      if (Math.abs(a) <= 90 && Math.abs(b) <= 180) return { lat: a, lon: b };
+      if (Math.abs(b) <= 90 && Math.abs(a) <= 180) return { lat: b, lon: a };
+      return null;
+    }
 
     function sanitizeCsvHeader(value) {
       return String(value ?? "").replace(/^\\uFEFF/, "").trim().toLowerCase().replace(/\\s+/g, "_");
@@ -2266,6 +2341,8 @@ function getLargeCsvWorkerSource() {
         let headers = null;
         let latitudeIndex = -1;
         let longitudeIndex = -1;
+        let combinedCoordIndex = -1;
+        let combinedCoordVerified = false;
         let rowCount = 0;
         let pointCount = 0;
         let skippedRows = 0;
@@ -2297,31 +2374,66 @@ function getLargeCsvWorkerSource() {
             latitudeIndex = findHeaderIndex(headers, LATITUDE_HEADERS);
             longitudeIndex = findHeaderIndex(headers, LONGITUDE_HEADERS);
             if (latitudeIndex === -1 || longitudeIndex === -1) {
-              throw new Error("CSV must contain latitude and longitude columns.");
+              // High-confidence names first, then low-confidence.
+              // Verification deferred to first real data row (see below).
+              hdrScan: for (const tier of [COMBINED_COORD_HEADERS_HI, COMBINED_COORD_HEADERS_LO]) {
+                for (let _i = 0; _i < headers.length; _i++) {
+                  if (tier.includes(headers[_i])) { combinedCoordIndex = _i; break hdrScan; }
+                }
+              }
+            }
+            if ((latitudeIndex === -1 || longitudeIndex === -1) && combinedCoordIndex === -1) {
+              throw new Error("CSV must contain latitude and longitude columns, or a single combined coordinates column (e.g. \\"8.42, 77.04\\").");
             }
             return;
           }
 
           rowCount += 1;
           const values = headers.map((_, index) => String(row[index] ?? ""));
-          const latitudeValue = String(values[latitudeIndex] ?? "").trim();
-          const longitudeValue = String(values[longitudeIndex] ?? "").trim();
 
-          if (!latitudeValue && !longitudeValue) {
-            skippedRows += 1;
-            return;
-          }
-
-          const lat = Number.parseFloat(latitudeValue);
-          const lon = Number.parseFloat(longitudeValue);
-          if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
-            invalidRows += 1;
-            return;
+          let lat, lon;
+          if (combinedCoordIndex !== -1) {
+            const rawCoord = String(values[combinedCoordIndex] ?? "").trim();
+            if (!rawCoord) { skippedRows += 1; return; }
+            // Verify column on first real data row
+            if (!combinedCoordVerified) {
+              const test = splitCombinedCoord(rawCoord);
+              if (!test) {
+                // Column matched by name but value is not coordinates
+                // (e.g. "location" holding place-name text). Try the
+                // next candidate column in priority order.
+                let advanced = false;
+                advScan: for (const tier of [COMBINED_COORD_HEADERS_HI, COMBINED_COORD_HEADERS_LO]) {
+                  for (let _i = 0; _i < headers.length; _i++) {
+                    if (_i === combinedCoordIndex || !tier.includes(headers[_i])) continue;
+                    const altRaw = String(values[_i] ?? "").trim();
+                    if (altRaw && splitCombinedCoord(altRaw)) {
+                      combinedCoordIndex = _i;
+                      advanced = true;
+                      break advScan;
+                    }
+                  }
+                }
+                if (!advanced) { invalidRows += 1; return; }
+              }
+              combinedCoordVerified = true;
+            }
+            const parsed = splitCombinedCoord(rawCoord);
+            if (!parsed) { invalidRows += 1; return; }
+            lat = parsed.lat;
+            lon = parsed.lon;
+          } else {
+            const latitudeValue = String(values[latitudeIndex] ?? "").trim();
+            const longitudeValue = String(values[longitudeIndex] ?? "").trim();
+            if (!latitudeValue && !longitudeValue) { skippedRows += 1; return; }
+            lat = Number.parseFloat(latitudeValue);
+            lon = Number.parseFloat(longitudeValue);
+            if (!Number.isFinite(lat) || !Number.isFinite(lon)) { invalidRows += 1; return; }
           }
 
           const properties = {};
           headers.forEach((header, headerIndex) => {
-            if (headerIndex === latitudeIndex || headerIndex === longitudeIndex) {
+            if (headerIndex === latitudeIndex || headerIndex === longitudeIndex || headerIndex === combinedCoordIndex) {
               return;
             }
 
@@ -2669,6 +2781,7 @@ function removeLayer(id) {
   }
 
   const layerRecord = loadedLayers[index];
+  if (typeof layerRecord.onRemove === "function") layerRecord.onRemove();
   disposeLayerResources(layerRecord);
   map.removeLayer(layerRecord.layerGroup);
   loadedLayers.splice(index, 1);

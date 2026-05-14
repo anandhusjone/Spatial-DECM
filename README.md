@@ -68,7 +68,7 @@ Advanced point / line / polygon symbols · Categorized · Graduated · Rule-base
 
 **🔥 Analysis**
 
-Heatmap · IDW interpolation · Gaussian interpolation · Nearest Neighbor interpolation
+Heatmap · IDW interpolation · Gaussian interpolation · Nearest Neighbor interpolation · Viewshed (line-of-sight)
 
 <br/>
 
@@ -94,8 +94,8 @@ GeoJSON · KML · Zipped Shapefile
 | `.gpx` | GPS Exchange Format |
 | `.zip` | Zipped shapefile bundle — must include `.shp`, `.shx`, `.dbf` |
 | `.shp` + sidecars | Loose shapefile import — select or drag the matching `.shp`, `.dbf`, `.shx`, `.prj`, and `.cpg` files together |
-| `.csv` | Must include lat/lon columns (`lat`, `lon`, `lng`, `x`, `y`) |
-| `.tif` / `.tiff` | GeoTIFF raster with tiled browser rendering, raster metadata, pixel sampling, NoData handling, and WGS84 / Web Mercator / WGS84 UTM alignment. |
+| `.csv` | Must include lat/lon columns (`lat`, `lon`, `lng`, `x`, `y`) — or a single combined column (`coordinates`, `coords`, `location`, `point`, etc.) with values like `"8.42, 77.04"` |
+| `.tif` / `.tiff` | GeoTIFF raster with tiled browser rendering, raster metadata, pixel sampling, NoData handling, and WGS84 / Web Mercator / WGS84 UTM alignment. Also used as input for local viewshed analysis. |
 
 <br/>
 
@@ -111,6 +111,23 @@ GeoJSON · KML · Zipped Shapefile
 
 > All processing happens **client-side**. Your data never leaves your browser.  
 > Large datasets may run slower due to browser memory limits.
+
+## Viewshed Analysis
+
+Viewshed analysis computes which areas of the terrain are visible from a chosen observer point. Click the **Viewshed** toolbar button to open the analysis panel.
+
+**Elevation sources**
+
+| Mode | Source | Resolution | Auth required |
+|------|--------|-----------|---------------|
+| Local DEM | Any single-band GeoTIFF loaded into the layer panel | Native raster resolution | None |
+| Global DEM | [AWS Open Data — Terrain Tiles (Terrarium)](https://registry.opendata.aws/terrain-tiles/) | ~30 m/px at zoom 12 | None — public, CORS-enabled |
+
+When *Use Global DEM* is ticked the app fetches RGB-encoded Terrarium elevation tiles (`https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png`) and stitches them into a single in-memory float grid before running the algorithm. A maximum of 64 tiles is fetched per run (≈ 50 km radius at most latitudes).
+
+**Algorithm** — Radial Bresenham line-of-sight sweep (`app/60-viewshed.js`). For every pixel on the DEM perimeter a ray is cast from the observer outward. A cell is marked visible if its angle of elevation from the observer equals or exceeds the running maximum angle seen on that ray so far. Optional Earth-curvature and atmospheric-refraction correction uses k = 0.13.
+
+**Output** — A PNG image overlay layer named *Viewshed* is added to the map. Visible cells are painted in semi-transparent green (`rgba(0, 255, 120, 0.45)`). The map legend shows two swatches (Visible / Not visible).
 
 ## CRS handling
 

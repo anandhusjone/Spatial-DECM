@@ -21,7 +21,7 @@ const helpPages = {
   <li><strong>Shapefile</strong> — either a zipped bundle (.zip) or the individual files (.shp, .dbf, .shx, .prj, .cpg) selected together</li>
   <li><strong>KML</strong> (.kml)</li>
   <li><strong>GPX</strong> (.gpx) — GPS tracks and waypoints</li>
-  <li><strong>CSV</strong> (.csv) — must have columns named lat/lon, lat/lng, or x/y</li>
+  <li><strong>CSV</strong> (.csv) — must have columns named lat/lon, lat/lng, or x/y — or a single combined column (e.g. <em>Coordinates</em>) containing values like <code>8.42, 77.04</code></li>
   <li><strong>GeoTIFF</strong> (.tif, .tiff) — satellite imagery or raster data</li>
 </ul>
 <p><strong>Each layer card lets you:</strong></p>
@@ -189,6 +189,43 @@ const helpPages = {
 </ul>
 <p>Edit the filename if you want, choose a format, and click <strong>Export</strong>. The file downloads immediately.</p>
 <p><em>Note: styles, labels, and filters are not saved inside the exported file — only the geometry and attribute data.</em></p>`,
+
+  viewshed: `<h3>Viewshed Analysis</h3>
+<p>Viewshed analysis shows which areas on the ground are <strong>visible</strong> from a chosen observer point — accounting for terrain elevation. Visible areas are highlighted in green on the map.</p>
+<hr/>
+<p><strong>Step 1 — Open the panel</strong></p>
+<p>Click the <strong>Viewshed</strong> button in the toolbar (eye-with-rays icon). A floating panel appears. You can drag it anywhere on the map.</p>
+<hr/>
+<p><strong>Step 2 — Choose an elevation source</strong></p>
+<p>There are two options:</p>
+<ul>
+  <li><strong>Local DEM</strong> — load a GeoTIFF elevation raster (e.g. SRTM, ALOS, or any single-band DEM) using Import. Once loaded it appears in the <em>Elevation raster</em> dropdown.</li>
+  <li><strong>Global DEM</strong> — tick <em>Use Global DEM</em>. The app fetches Terrarium RGB-encoded elevation tiles from AWS Open Data automatically. No file needed. A radius is required (5 000 – 50 000 m). Resolution is approximately 30 m/pixel at zoom 12.</li>
+</ul>
+<hr/>
+<p><strong>Step 3 — Set the observer</strong></p>
+<p>Click <strong>Pick from Map</strong>, then click the location on the map where the observer stands. A green marker and a dashed radius circle appear to confirm. You can also type coordinates directly. Drag the panel out of the way if needed.</p>
+<hr/>
+<p><strong>Step 4 — Configure parameters</strong></p>
+<ul>
+  <li><strong>Observer height</strong> — height of the observer's eyes above the ground (metres). Use 1.7 m for a standing person, 20 m for a tower, etc.</li>
+  <li><strong>Target height</strong> — minimum height of a target above ground for it to count as visible (metres). Leave at 0 to test ground-level visibility.</li>
+  <li><strong>Max radius</strong> — only analyse terrain within this distance from the observer (metres). Set to 0 for unlimited extent (local DEM only). Required when using the Global DEM.</li>
+  <li><strong>Earth curvature &amp; refraction</strong> — tick this for long-distance analyses (&gt; 5 km). Corrects for the curvature of the Earth and atmospheric bending (refraction factor k = 0.13).</li>
+</ul>
+<hr/>
+<p><strong>Step 5 — Run the analysis</strong></p>
+<p>Click <strong>Compute Viewshed</strong>. A progress bar appears while tiles are fetched and the algorithm runs. The result appears as a new <strong>Viewshed</strong> layer in the layer panel.</p>
+<hr/>
+<p><strong>Reading the result</strong></p>
+<ul>
+  <li><strong>Green areas</strong> — terrain visible from the observer point.</li>
+  <li><strong>Transparent areas</strong> — terrain hidden from view (behind hills or ridges).</li>
+</ul>
+<p>A legend in the bottom-right corner labels the two categories. Running the analysis again replaces the previous Viewshed layer.</p>
+<hr/>
+<p><strong>Algorithm</strong></p>
+<p>The tool uses a radial Bresenham line-of-sight sweep: for every pixel on the DEM perimeter, a ray is traced from the observer outward. A cell is marked visible if its angle of elevation from the observer exceeds the maximum angle seen so far along that ray.</p>`,
 
   projects: `<h3>Projects</h3>
 <p>Projects let you save your entire workspace — all layers, styles, labels, filters, and the map position — and reopen it later exactly as you left it.</p>

@@ -1886,6 +1886,27 @@ li {
   color: var(--muted);
 }
 
+/* Viewshed binary legend swatches */
+.map-legend-swatches {
+  display: grid;
+  grid-template-columns: 14px 1fr;
+  align-items: center;
+  gap: 5px 8px;
+  margin-top: 6px;
+}
+
+.map-legend-swatch {
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  display: inline-block;
+}
+
+.map-legend-swatch-label {
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
 .toggle-choice {
   display: inline-flex;
   align-items: center;
@@ -3027,6 +3048,10 @@ details[open] .advanced-style-summary::before {
   height: 3px;
   border-radius: 2px;
   background: linear-gradient(90deg, var(--accent) 0%, #00ff78 100%);
+  animation: none;
+}
+
+.vs-progress:not([hidden]) .vs-progress-bar {
   animation: vs-indeterminate 1.4s ease-in-out infinite;
 }
 
