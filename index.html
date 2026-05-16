@@ -21,8 +21,92 @@
       href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css"
     />
     <link rel="stylesheet" href="./styles.css" />
+
+    <!-- ── Splash overlay styles ── -->
+    <style>
+      /* Overlay sits above everything */
+      #splash-overlay {
+        position: fixed;
+        inset: 0;
+        z-index: 9999;
+        background-color: #05080c;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 20px;
+        font-family: 'Orbitron', sans-serif;
+        /* CSS fallback: auto-hide after 8s if JS/anime fails */
+        animation: splash-failsafe 0.01s linear 8s forwards;
+      }
+      @keyframes splash-failsafe {
+        to { opacity: 0; pointer-events: none; display: none; }
+      }
+
+      #splash-overlay.splash-hiding {
+        transition: opacity 0.6s ease;
+        opacity: 0;
+        pointer-events: none;
+      }
+
+      .splash-globe-wrapper {
+        width: 320px;
+        height: 320px;
+      }
+      .splash-globe-wrapper svg {
+        width: 100%;
+        height: 100%;
+      }
+      .splash-neon-line {
+        stroke: #00f2fe;
+        stroke-width: 2.5;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+        opacity: 0;
+        fill: none;
+      }
+      .splash-brand-text {
+        color: #00f2fe;
+        font-size: 22px;
+        font-weight: 700;
+        letter-spacing: 6px;
+        text-transform: uppercase;
+        opacity: 0;
+        margin-right: -6px;
+        text-align: center;
+      }
+
+
+      /* App shell hidden until splash clears */
+      /* app-shell is always fully visible — overlay sits on top */
+    </style>
   </head>
   <body>
+
+    <!-- ── Startup splash overlay ── -->
+    <div id="splash-overlay">
+      <div class="splash-globe-wrapper">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 500">
+          <g fill="none">
+            <circle class="splash-neon-line" cx="250" cy="250" r="180" />
+            <ellipse class="splash-neon-line" cx="250" cy="250" rx="40"  ry="180" />
+            <ellipse class="splash-neon-line" cx="250" cy="250" rx="80"  ry="180" />
+            <ellipse class="splash-neon-line" cx="250" cy="250" rx="120" ry="180" />
+            <ellipse class="splash-neon-line" cx="250" cy="250" rx="155" ry="180" />
+            <line   class="splash-neon-line" x1="250" y1="70" x2="250" y2="430" />
+            <ellipse class="splash-neon-line" cx="250" cy="250" rx="180" ry="55" />
+            <ellipse class="splash-neon-line" cx="250" cy="188" rx="168" ry="49" />
+            <ellipse class="splash-neon-line" cx="250" cy="132" rx="140" ry="39" />
+            <ellipse class="splash-neon-line" cx="250" cy="90"  rx="95"  ry="25" />
+            <ellipse class="splash-neon-line" cx="250" cy="312" rx="168" ry="49" />
+            <ellipse class="splash-neon-line" cx="250" cy="368" rx="140" ry="39" />
+            <ellipse class="splash-neon-line" cx="250" cy="410" rx="95"  ry="25" />
+          </g>
+        </svg>
+      </div>
+      <div class="splash-brand-text">Spatial-D.E.C.M</div>
+    </div>
+
     <input
       id="file-input"
       type="file"
@@ -1201,5 +1285,134 @@
     <script src="./app/50-map-tools.js"></script>
     <script src="./app/99-help-content.js"></script>
     <script src="./app/60-viewshed.js"></script>
+
+    <!-- ── Splash controller ── -->
+    <script>
+    (function () {
+      var SESSION_KEY = 'sdecm_intro_shown';
+      var overlay     = document.getElementById('splash-overlay');
+
+      // ── Dismiss handler ──
+      // instant=true  → animation finished naturally, everything already invisible
+      // instant=false → user clicked mid-animation, need to fade overlay out first
+      function dismissSplash(instant) {
+        if (!overlay || overlay.dataset.dismissed) return;
+        overlay.dataset.dismissed = 'true';
+
+        if (window._splashTimeline) {
+          window._splashTimeline.pause();
+        }
+
+        if (instant === true) {
+          // Animation ended naturally — just yank the overlay, app is already rendered behind it
+          overlay.style.display = 'none';
+        } else {
+          // Mid-animation click skip — quick fade so it doesn't feel jarring
+          overlay.classList.add('splash-hiding');
+          setTimeout(function () { overlay.style.display = 'none'; }, 550);
+        }
+
+        try { sessionStorage.setItem(SESSION_KEY, '1'); } catch(e) {}
+      }
+
+      // ── Session guard: skip on reload ──
+      var alreadyShown = false;
+      try { alreadyShown = !!sessionStorage.getItem(SESSION_KEY); } catch(e) {}
+
+      if (alreadyShown) {
+        if (overlay) overlay.style.display = 'none';
+        return;
+      }
+
+      // ── Click anywhere on overlay to skip ──
+      overlay.addEventListener('click', function() { dismissSplash(false); });
+
+      // ── Run animation (single pass) ──
+      var lines     = document.querySelectorAll('.splash-neon-line');
+      var brandText = document.querySelector('.splash-brand-text');
+
+      lines.forEach(function (el) {
+        var len = el.getTotalLength ? el.getTotalLength() : 1200;
+        el.setAttribute('stroke-dasharray',  len);
+        el.setAttribute('stroke-dashoffset', len);
+      });
+
+      var tl = anime.timeline({
+        loop:     false,
+        autoplay: true,
+        easing:   'easeInOutSine',
+        complete: function() { dismissSplash(true); }
+      });
+
+      window._splashTimeline = tl;
+
+      tl
+        // ── APPEAR ──────────────────────────────────────────────
+
+        // STEP 1 — draw globe lines in, one by one
+        .add({
+          targets:          lines,
+          strokeDashoffset: 0,
+          opacity: { value: [0, 1], duration: 500, easing: 'linear' },
+          duration: 2000,
+          delay:    anime.stagger(110)
+        })
+        // STEP 2 — neon-sign ignite flicker
+        .add({
+          targets: brandText,
+          opacity: [
+            { value: 0.7, duration: 40  },
+            { value: 0.1, duration: 50  },
+            { value: 0.8, duration: 40  },
+            { value: 0.2, duration: 60  },
+            { value: 0.9, duration: 40  },
+            { value: 0.0, duration: 80  },
+            { value: 1.0, duration: 200 }
+          ],
+          easing: 'linear',
+          offset: '-=800'
+        })
+
+        // ── HOLD ─────────────────────────────────────────────────
+
+        // STEP 3 — hold the full lit frame
+        .add({
+          targets:  [lines, brandText],
+          duration: 1800
+        })
+
+        // ── DISAPPEAR ────────────────────────────────────────────
+
+        // STEP 4 — text flickers off (reverse of ignite)
+        .add({
+          targets: brandText,
+          opacity: [
+            { value: 0.6, duration: 60  },
+            { value: 0.0, duration: 40  },
+            { value: 0.4, duration: 50  },
+            { value: 0.0, duration: 40  },
+            { value: 0.2, duration: 60  },
+            { value: 0.0, duration: 120 }
+          ],
+          easing: 'linear'
+        })
+        // STEP 5 — erase globe lines back to nothing (reverse draw)
+        .add({
+          targets:          lines,
+          strokeDashoffset: [0, function(el) {
+            return el.getAttribute('stroke-dasharray');
+          }],
+          opacity: {
+            value:    [1, 0],
+            duration: 400,
+            easing:   'linear'
+          },
+          duration: 2000,
+          delay:    anime.stagger(80, { from: 'last' }),
+          offset:   '-=200'
+        });
+
+    }());
+    </script>
   </body>
 </html>
