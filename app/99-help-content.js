@@ -11,7 +11,13 @@ const helpPages = {
   <li>Drag a file onto the map — or click <strong>Import</strong> in the toolbar.</li>
   <li>Your data appears as a layer in the left panel.</li>
   <li>Click the three-dot menu on a layer to style, filter, analyse, or export it.</li>
-</ol>`,
+</ol>
+<hr/>
+<p><strong>New here?</strong> Download our sample dataset to explore the app straight away.</p>
+<a href="https://raw.githubusercontent.com/anandhusjone/Spatial-DECM/refs/heads/main/Sample_project.zip" download style="display:inline-flex;align-items:center;gap:8px;margin-top:4px;padding:9px 18px;background:#2563eb;color:#fff;border-radius:7px;text-decoration:none;font-weight:600;font-size:0.95em;">
+  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+  Download Sample Data
+</a>`,
 
   layers: `<h3>Layers</h3>
 <p>Every file you open becomes a <strong>layer</strong> — a card in the left panel. You can load as many layers as you like at the same time.</p>
