@@ -1,5 +1,8 @@
 const map = L.map("map", {
   zoomControl: true,
+  zoomDelta: 0.25,
+  zoomSnap: 0.25,
+  wheelPxPerZoomLevel: 240,
 }).setView([20, 0], 2);
 
 const basemapLayers = {
