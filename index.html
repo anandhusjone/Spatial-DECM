@@ -450,7 +450,7 @@
               </svg>
               Pick from Map
             </button>
-            <span id="vs-coords-display" class="vs-coords">Not set</span>
+            <input id="vs-coords-display" class="vs-coords vs-coords-input" type="text" placeholder="Not set — or paste lat, lng" title="Paste coordinates as: lat, lng" autocomplete="off" spellcheck="false" />
             <button id="vs-clear-obs-btn" class="wt-clear-btn" type="button" title="Clear observer point" hidden>✕</button>
           </div>
         </div>
@@ -555,7 +555,7 @@
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><line x1="12" y1="2" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="2" y1="12" x2="5" y2="12"/><line x1="19" y1="12" x2="22" y2="12"/></svg>
                   Pick on map
                 </button>
-                <span id="wt-coords-display" class="wt-action-status">Not set</span>
+                <input id="wt-coords-display" class="wt-action-status wt-coords-input" type="text" placeholder="Not set — or paste lat, lng" title="Paste coordinates as: lat, lng" autocomplete="off" spellcheck="false" />
                 <button id="wt-clear-pour-btn" class="wt-clear-btn" type="button" title="Clear pour point" hidden>✕</button>
               </div>
             </div>
@@ -602,7 +602,7 @@
         <!-- ④ Sink-fill minimum slope (Wang & Liu 2006) -->
         <div class="wt-section">
           <div class="wt-row">
-            <span class="wt-section-label">Min Slope</span>
+            <span class="wt-section-label">Min Slope (flat areas)</span>
             <span class="wt-label-hint" id="wt-minslope-display">0.0001 m/m</span>
           </div>
           <input id="wt-minslope-slider" class="wt-slider" type="range"
