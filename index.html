@@ -75,6 +75,15 @@
         margin-right: -6px;
         text-align: center;
       }
+      .splash-version-text {
+        color: #F26E22;
+        font-size: 13px;
+        font-weight: 700;
+        letter-spacing: 4px;
+        opacity: 0;
+        text-align: center;
+        margin-top: -8px;
+      }
 
 
       /* App shell hidden until splash clears */
@@ -105,6 +114,7 @@
         </svg>
       </div>
       <div class="splash-brand-text">Spatial-D.E.C.M</div>
+      <div class="splash-version-text">(V2)</div>
     </div>
 
     <input
@@ -146,13 +156,9 @@
           </div>
 
           <section class="panel project-panel">
-            <div class="panel-heading">
-              <h2>Project</h2>
-            </div>
             <div id="project-bar" class="project-bar">
-              <!-- rendered by renderProjectBar() in 40-project.js -->
+              <!-- rendered by updateProjectBar() in 40-project.js -->
             </div>
-            <p id="project-compat-note" class="project-compat-note small-note" hidden></p>
           </section>
 
           <section class="panel layers-panel">
@@ -200,23 +206,71 @@
             aria-label="Hide attribute table"
             aria-pressed="true"
           >
-            <span class="table-toggle-icon" aria-hidden="true">
-              <span class="table-grid">
-                <span></span>
-                <span></span>
-                <span></span>
-                <span></span>
-              </span>
-              <span class="table-eye">
-                <span class="table-eye-pupil"></span>
-              </span>
-              <span class="table-toggle-slash"></span>
-            </span>
+            <svg class="tts" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+              <g class="tts-grid">
+                <rect x="1.5" y="1.5" width="17" height="17" rx="1.5" stroke="currentColor" stroke-width="1.2" fill="none"/>
+                <line x1="1.5" y1="6"  x2="18.5" y2="6"  stroke="currentColor" stroke-width="0.9"/>
+                <line x1="7.5" y1="6"  x2="7.5"  y2="18.5" stroke="currentColor" stroke-width="0.9"/>
+                <line x1="13.5" y1="6" x2="13.5" y2="18.5" stroke="currentColor" stroke-width="0.9"/>
+                <line x1="1.5" y1="11" x2="18.5" y2="11" stroke="currentColor" stroke-width="0.9"/>
+                <line x1="1.5" y1="15.5" x2="18.5" y2="15.5" stroke="currentColor" stroke-width="0.9"/>
+                <rect x="2.5" y="2.5" width="16" height="2.8" rx="0.5" fill="currentColor" opacity="0.18"/>
+              </g>
+              <line class="tts-slash" x1="3" y1="3" x2="17" y2="17" stroke="#e03131" stroke-width="2" stroke-linecap="round"/>
+            </svg>
           </button>
           <button id="theme-cycle-btn" class="ghost-button floating-theme-btn" type="button">Dark</button>
-          <button id="basemap-switcher-btn" class="ghost-button floating-basemap-btn" type="button" title="Switch basemap" aria-label="Switch basemap">
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
+          <!-- DEM button visibility: set to 0 to hide, 1 to show --><script>document.addEventListener('DOMContentLoaded',function(){document.getElementById('dem-toggle-btn').style.display=['none',''][0];});</script>
+          <button id="dem-toggle-btn" class="ghost-button floating-dem-btn" type="button" title="Toggle Global DEM (Terrarium ~30 m)" aria-label="Toggle Global DEM layer" aria-pressed="false">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <!-- mountain peaks -->
+              <polyline points="2,18 8,8 13,14 17,9 22,18"/>
+              <!-- scale bars -->
+              <line x1="3" y1="21" x2="8" y2="21"/>
+              <line x1="10" y1="21" x2="16" y2="21"/>
+              <line x1="18" y1="21" x2="21" y2="21"/>
+            </svg>
           </button>
+          <div class="basemap-picker" id="basemap-picker">
+            <button id="basemap-switcher-btn" class="ghost-button floating-basemap-btn" type="button" title="Switch basemap" aria-label="Switch basemap" aria-haspopup="listbox" aria-expanded="false">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
+            </button>
+            <div class="basemap-dropdown" id="basemap-dropdown" role="listbox" aria-label="Select basemap" hidden>
+              <p class="basemap-dropdown-header">Base map</p>
+              <button class="bm-option" data-basemap="dark" role="option" type="button">
+                <div class="bm-preview"><canvas class="bm-canvas" data-basemap="dark" width="88" height="88"></canvas></div>
+                <div class="bm-info">
+                  <span class="bm-name">CartoDB Dark</span>
+                  <span class="bm-desc">Minimal · dark theme</span>
+                </div>
+                <svg class="bm-check" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="2,8 6,12 14,4"/></svg>
+              </button>
+              <button class="bm-option" data-basemap="light" role="option" type="button">
+                <div class="bm-preview"><canvas class="bm-canvas" data-basemap="light" width="88" height="88"></canvas></div>
+                <div class="bm-info">
+                  <span class="bm-name">CartoDB Light</span>
+                  <span class="bm-desc">Minimal · light theme</span>
+                </div>
+                <svg class="bm-check" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="2,8 6,12 14,4"/></svg>
+              </button>
+              <button class="bm-option" data-basemap="satellite" role="option" type="button">
+                <div class="bm-preview"><canvas class="bm-canvas" data-basemap="satellite" width="88" height="88"></canvas></div>
+                <div class="bm-info">
+                  <span class="bm-name">Google Satellite</span>
+                  <span class="bm-desc">Aerial imagery</span>
+                </div>
+                <svg class="bm-check" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="2,8 6,12 14,4"/></svg>
+              </button>
+              <button class="bm-option" data-basemap="topo" role="option" type="button">
+                <div class="bm-preview"><canvas class="bm-canvas" data-basemap="topo" width="88" height="88"></canvas></div>
+                <div class="bm-info">
+                  <span class="bm-name">OpenTopoMap</span>
+                  <span class="bm-desc">Contours · terrain</span>
+                </div>
+                <svg class="bm-check" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="2,8 6,12 14,4"/></svg>
+              </button>
+            </div>
+          </div>
           <div class="map-tools-dock">
             <button id="locate-btn" class="map-tool-btn" type="button" title="Find my location" aria-label="Find my location">
               <svg xmlns="http://www.w3.org/2000/svg" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -238,6 +292,13 @@
                 <line x1="19" y1="12" x2="22" y2="12"/>
               </svg>
             </button>
+            <button id="watershed-btn" class="map-tool-btn" type="button" title="Watershed &amp; Channel Extraction" aria-label="Open watershed analysis panel" aria-pressed="false">
+              <svg xmlns="http://www.w3.org/2000/svg" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M12 2 C8 6 4 8 4 13 a8 8 0 0 0 16 0 C20 8 16 6 12 2z"/>
+                <path d="M12 8 C10 11 8 13 8 15"/>
+                <path d="M12 8 C14 11 16 13 16 15"/>
+              </svg>
+            </button>
           </div>
           <div id="map"></div>
         </section>
@@ -247,7 +308,16 @@
           <div class="panel-heading">
             <div class="table-heading-left">
               <h2>Attribute Table</h2>
-              <span id="table-layer-label" class="table-layer-label"></span>
+              <div id="table-layer-label-wrap" class="table-layer-label-wrap">
+                <span id="table-layer-label" class="table-layer-label"></span>
+                <button id="table-layer-rename-btn" class="table-layer-rename-btn" type="button" title="Rename layer" aria-label="Rename layer" hidden>
+                  <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                  </svg>
+                </button>
+                <input id="table-layer-rename-input" class="table-layer-rename-input" type="text" maxlength="120" autocomplete="off" spellcheck="false" hidden aria-label="Layer name" />
+              </div>
             </div>
             <div class="panel-actions">
               <button
@@ -315,19 +385,40 @@
         <button id="viewshed-panel-close-btn" class="vs-panel-close ghost-button" type="button" aria-label="Close viewshed panel">✕</button>
       </div>
       <div class="vs-panel-body">
-        <label class="vs-checkbox-row vs-global-dem-row">
-          <input id="vs-global-dem" class="vs-checkbox" type="checkbox">
-          <span class="vs-checkbox-label">
-            Use Global DEM
-            <span class="vs-label-hint"> — Terrarium tiles, ~30 m res</span>
-          </span>
-        </label>
-        <div id="vs-dem-select-wrap" class="vs-field-stack">
-          <span class="vs-label">DEM Raster Layer</span>
-          <select id="vs-dem-select" class="dark-input vs-select">
-            <option value="">— select elevation raster —</option>
-          </select>
+        <!-- Elevation Source cards (mirrors watershed panel) -->
+        <div class="wt-dem-cards" id="vs-dem-source-ctrl">
+          <button class="wt-dem-card is-active" data-dem-source="local">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l4-8 4 5 3-3 4 6"/><rect x="2" y="3" width="20" height="18" rx="2"/></svg>
+            <span class="wt-dem-card-label">Local DEM</span>
+            <span class="wt-dem-card-hint">Loaded layer</span>
+          </button>
+          <button class="wt-dem-card" data-dem-source="global">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15 15 0 0 1 0 20M12 2a15 15 0 0 0 0 20"/></svg>
+            <span class="wt-dem-card-label">Global DEM</span>
+            <span class="wt-dem-card-hint">~30 m SRTM</span>
+          </button>
         </div>
+
+        <!-- Local DEM: layer dropdown (visible only for local) -->
+        <div id="vs-dem-select-wrap" class="wt-collapsible is-open">
+          <div class="wt-collapsible-inner">
+            <select id="vs-dem-select" class="dark-input wt-select">
+              <option value="">— select elevation raster —</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Global DEM: max radius (always visible) -->
+        <label class="vs-field-stack">
+          <span class="vs-label">Max Radius <span class="vs-label-hint" id="vs-radius-hint">(0 = unlimited)</span></span>
+          <div class="vs-unit-input">
+            <input id="vs-max-radius" class="dark-input" type="number" min="0" max="999999" step="100" value="0" inputmode="decimal">
+            <span class="vs-unit">m</span>
+          </div>
+        </label>
+
+        <div class="wt-divider"></div>
+
         <div class="vs-row">
           <label class="vs-field-stack">
             <span class="vs-label">Observer Height</span>
@@ -344,13 +435,6 @@
             </div>
           </label>
         </div>
-        <label class="vs-field-stack">
-          <span class="vs-label">Max Radius <span class="vs-label-hint" id="vs-radius-hint">(0 = unlimited)</span></span>
-          <div class="vs-unit-input">
-            <input id="vs-max-radius" class="dark-input" type="number" min="0" max="999999" step="100" value="0" inputmode="decimal">
-            <span class="vs-unit">m</span>
-          </div>
-        </label>
         <label class="vs-checkbox-row">
           <input id="vs-curvature" class="vs-checkbox" type="checkbox">
           <span class="vs-checkbox-label">Apply earth curvature correction</span>
@@ -367,14 +451,195 @@
               Pick from Map
             </button>
             <span id="vs-coords-display" class="vs-coords">Not set</span>
+            <button id="vs-clear-obs-btn" class="wt-clear-btn" type="button" title="Clear observer point" hidden>✕</button>
           </div>
         </div>
         <p id="vs-error-msg" class="vs-error" hidden></p>
         <div id="vs-progress" class="vs-progress" hidden>
-          <div class="vs-progress-bar"></div>
+          <div class="vs-progress-track"><div class="vs-progress-bar"></div></div>
           <span class="vs-progress-label" id="vs-progress-label">Computing viewshed…</span>
         </div>
         <button id="vs-apply-btn" class="vs-apply-btn ghost-button" type="button">Apply Viewshed</button>
+      </div>
+    </div>
+
+    <!-- ── Watershed & Channel Extraction Panel ── -->
+    <!-- ═══════════════════════════════════════════════════════════
+         WATERSHED PANEL  —  v2 minimal
+         ═══════════════════════════════════════════════════════════ -->
+    <div id="watershed-panel" class="wt-panel" hidden aria-label="Watershed Analysis" role="complementary">
+
+      <!-- Header / drag handle -->
+      <div class="wt-panel-header" id="watershed-panel-header">
+        <span class="wt-panel-title">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M12 2C8 6 4 9 4 14a8 8 0 0 0 16 0C20 9 16 6 12 2z"/>
+            <path d="M12 9v6M9 12l3 3 3-3"/>
+          </svg>
+          Watershed
+        </span>
+        <button id="watershed-panel-close-btn" class="wt-panel-close ghost-button" type="button" aria-label="Close">✕</button>
+      </div>
+
+      <div class="wt-panel-body">
+
+        <!-- ① Elevation source -->
+        <div class="wt-section">
+          <span class="wt-section-label">Elevation Source</span>
+          <div class="wt-dem-cards" id="wt-dem-source-ctrl">
+            <button class="wt-dem-card is-active" data-dem-source="local">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l4-8 4 5 3-3 4 6"/><rect x="2" y="3" width="20" height="18" rx="2"/></svg>
+              <span class="wt-dem-card-label">Local DEM</span>
+              <span class="wt-dem-card-hint">Loaded layer</span>
+            </button>
+            <button class="wt-dem-card" data-dem-source="global">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15 15 0 0 1 0 20M12 2a15 15 0 0 0 0 20"/></svg>
+              <span class="wt-dem-card-label">Global DEM</span>
+              <span class="wt-dem-card-hint">~30 m SRTM</span>
+            </button>
+          </div>
+
+          <!-- Local DEM: layer dropdown (visible only for local) -->
+          <div id="wt-dem-select-wrap" class="wt-collapsible is-open">
+            <div class="wt-collapsible-inner">
+              <select id="wt-dem-select" class="dark-input wt-select">
+                <option value="">— choose raster layer —</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Global DEM: fetch radius (visible only for global) -->
+          <div id="wt-global-radius-wrap" class="wt-collapsible">
+            <div class="wt-collapsible-inner">
+              <div class="wt-row">
+                <span class="wt-section-label">Fetch radius</span>
+                <span class="wt-label-hint" id="wt-global-radius-display">10 km</span>
+              </div>
+              <input id="wt-global-radius" class="wt-slider" type="range" min="5000" max="100000" step="1000" value="10000">
+            </div>
+          </div>
+        </div>
+
+        <div class="wt-divider"></div>
+
+        <!-- ② Area of Interest -->
+        <div class="wt-section">
+          <span class="wt-section-label">Area of Interest</span>
+          <div class="wt-aoi-cards" id="wt-input-mode-ctrl">
+
+            <!-- Pour Point card -->
+            <button class="wt-aoi-card is-active" data-input-mode="pourpoint" title="Delineate upstream basin from a point">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="10" r="3"/><path d="M12 2C8.686 2 6 4.686 6 8c0 4.418 6 12 6 12s6-7.582 6-12c0-3.314-2.686-6-6-6z"/></svg>
+              <span>Pour Point</span>
+            </button>
+
+            <!-- Polygon card -->
+            <button class="wt-aoi-card" data-input-mode="polygon" title="Analyse channels within a drawn polygon">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 22 9 18 21 6 21 2 9"/></svg>
+              <span>Polygon</span>
+            </button>
+
+            <!-- Canvas card -->
+            <button class="wt-aoi-card" data-input-mode="canvas" title="Use the current map view as the analysis extent">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18M15 3v18" stroke-dasharray="2 2"/></svg>
+              <span>Canvas</span>
+            </button>
+
+          </div>
+
+          <!-- Pour point action (only when pourpoint is active) -->
+          <div id="wt-pourpoint-row" class="wt-collapsible is-open">
+            <div class="wt-collapsible-inner">
+              <div class="wt-action-box" id="wt-pourpoint-action">
+                <button id="wt-pick-btn" class="wt-action-btn" type="button">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><line x1="12" y1="2" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="2" y1="12" x2="5" y2="12"/><line x1="19" y1="12" x2="22" y2="12"/></svg>
+                  Pick on map
+                </button>
+                <span id="wt-coords-display" class="wt-action-status">Not set</span>
+                <button id="wt-clear-pour-btn" class="wt-clear-btn" type="button" title="Clear pour point" hidden>✕</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Polygon action (only when polygon is active) -->
+          <div id="wt-polygon-row" class="wt-collapsible">
+            <div class="wt-collapsible-inner">
+              <div class="wt-action-box" id="wt-polygon-action">
+                <button id="wt-draw-btn" class="wt-action-btn" type="button">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 22 20 2 20"/></svg>
+                  Draw polygon
+                </button>
+                <span id="wt-polygon-status" class="wt-action-status">Not drawn</span>
+                <button id="wt-clear-poly-btn" class="wt-clear-btn" type="button" title="Clear polygon" hidden>✕</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Canvas hint (only when canvas is active) -->
+          <div id="wt-canvas-row" class="wt-collapsible">
+            <div class="wt-collapsible-inner">
+              <div class="wt-canvas-hint">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                Analyses the entire visible area. Pan &amp; zoom to region first, then run.
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="wt-divider"></div>
+
+        <!-- ③ Channel threshold -->
+        <div class="wt-section">
+          <div class="wt-row">
+            <span class="wt-section-label">Channel Threshold</span>
+            <span class="wt-label-hint" id="wt-threshold-display">500 cells</span>
+          </div>
+          <input id="wt-threshold-slider" class="wt-slider" type="range" min="10" max="5000" step="10" value="500">
+        </div>
+
+        <div class="wt-divider"></div>
+
+        <!-- ④ Sink-fill minimum slope (Wang & Liu 2006) -->
+        <div class="wt-section">
+          <div class="wt-row">
+            <span class="wt-section-label">Min Slope (flat areas)</span>
+            <span class="wt-label-hint" id="wt-minslope-display">0.0001 m/m</span>
+          </div>
+          <input id="wt-minslope-slider" class="wt-slider" type="range"
+                 min="-6" max="-2" step="0.25" value="-4">
+          <span class="wt-canvas-hint" style="margin-top:4px">
+            Wang &amp; Liu fill: minimum gradient imposed across flat sinks.
+            Lower values preserve flat areas; higher values force stronger drainage.
+          </span>
+        </div>
+
+        <div class="wt-divider"></div>
+
+        <!-- ⑤ Sub-basins -->
+        <div class="wt-section">
+          <div class="wt-row">
+            <span class="wt-section-label">Sub-basins</span>
+            <label class="wt-toggle">
+              <input id="wt-subbasins-toggle" type="checkbox">
+              <span class="wt-toggle-track"><span class="wt-toggle-thumb"></span></span>
+            </label>
+          </div>
+        </div>
+
+        <!-- Error -->
+        <p id="wt-error-msg" class="wt-error" hidden></p>
+
+        <!-- Progress bar -->
+        <div id="wt-progress" class="wt-progress-v2" hidden>
+          <div class="wt-progress-track"><div id="wt-progress-fill" class="wt-progress-bar"></div></div>
+          <span id="wt-progress-label" class="wt-label-hint">Computing…</span>
+        </div>
+
+        <div class="wt-btn-row">
+          <button id="wt-apply-btn" class="wt-apply-btn ghost-button" type="button">Run Watershed</button>
+          <button id="wt-cancel-btn" class="wt-cancel-btn ghost-button" type="button" hidden>Cancel</button>
+        </div>
+
       </div>
     </div>
 
@@ -500,7 +765,7 @@
             </div>
             <button id="close-calculator-modal-btn" class="calc2-close ghost-button" type="button" aria-label="Close">✕</button>
           </div>
-          <!-- Target field inputs — shown in a second row for clarity -->
+          <!-- Target field inputs -->
           <div id="calculator-target-wrap" class="calc2-target-row">
             <label class="calc2-target-label" id="calculator-new-field-stack">
               <span class="calc2-target-hint">Output field name</span>
@@ -516,23 +781,24 @@
         <!-- ── Body: two-column ───────────────────────────────── -->
         <div class="calc2-body">
 
-          <!-- Left: reference panel with tabs -->
+          <!-- Left: reference panel — Geometry · Fields · Functions -->
           <aside class="calc2-reference">
             <div class="calc2-ref-tabs" role="tablist">
-              <button class="calc2-ref-tab is-active" type="button" data-ref-tab="fields" role="tab">Fields</button>
-              <button class="calc2-ref-tab" type="button" data-ref-tab="variables" role="tab">Variables</button>
+              <button class="calc2-ref-tab is-active" type="button" data-ref-tab="geometry" role="tab">Geometry</button>
+              <button class="calc2-ref-tab" type="button" data-ref-tab="fields" role="tab">Fields</button>
               <button class="calc2-ref-tab" type="button" data-ref-tab="functions" role="tab">Functions</button>
             </div>
 
-            <!-- Fields tab -->
-            <div class="calc2-ref-panel is-active" data-ref-panel="fields">
-              <input id="calculator-field-search" class="dark-input calc2-search" type="text" placeholder="Search fields…" />
-              <div id="calculator-field-list" class="calc2-chip-list"></div>
+            <!-- Geometry tab: $area $length $x $y -->
+            <div class="calc2-ref-panel is-active" data-ref-panel="geometry">
+              <p class="calc2-panel-hint">Click a variable to insert it at the cursor.</p>
+              <div id="calculator-variable-list" class="calc2-chip-list calc2-geo-list"></div>
             </div>
 
-            <!-- Variables tab -->
-            <div class="calc2-ref-panel" data-ref-panel="variables">
-              <div id="calculator-variable-list" class="calc2-chip-list calculator-variable-list"></div>
+            <!-- Fields tab -->
+            <div class="calc2-ref-panel" data-ref-panel="fields">
+              <input id="calculator-field-search" class="dark-input calc2-search" type="text" placeholder="Search fields…" />
+              <div id="calculator-field-list" class="calc2-chip-list"></div>
             </div>
 
             <!-- Functions tab -->
@@ -542,47 +808,67 @@
             </div>
           </aside>
 
-          <!-- Right: editor + preview -->
+          <!-- Right: syntax-highlighted editor + live preview -->
           <section class="calc2-editor">
-            <!-- Expression -->
-            <div class="calc2-expr-wrap">
+
+            <!-- Highlighted editor overlay + hidden textarea for value -->
+            <div class="calc2-expr-wrap" id="calculator-expr-wrap">
+              <div
+                id="calculator-expression-highlight"
+                class="calc2-highlight"
+                aria-hidden="true"
+              ></div>
               <textarea
                 id="calculator-expression"
                 class="calculator-expression calc2-expr"
-                placeholder='Example: [name] || " - " || [category]'
+                placeholder="Example: round($area / 10000, 2)"
+                spellcheck="false"
+                autocomplete="off"
+                autocorrect="off"
+                autocapitalize="off"
               ></textarea>
             </div>
 
-            <!-- Preview row -->
+            <!-- Live preview — always on, no button needed -->
             <div class="calc2-preview-row">
               <label class="calc2-preview-select">
                 <span class="calc2-preview-label">Preview on</span>
                 <select id="calculator-preview-feature" class="dark-input"></select>
               </label>
               <div class="calc2-preview-result">
-                <p id="calculator-preview-text" class="calc2-preview-text">Write an expression above to see a preview.</p>
+                <p id="calculator-preview-text" class="calc2-preview-text">Write an expression above to see a live preview.</p>
                 <div id="calculator-preview-details" class="calculator-preview-details" hidden></div>
                 <div id="calculator-error" class="calculator-error" hidden></div>
               </div>
             </div>
 
-            <!-- Saved expressions row -->
+            <!-- Saved expressions — collapsed into one dropdown -->
             <div class="calc2-saved-row">
-              <select id="calculator-saved-expressions" class="dark-input calc2-saved-select"></select>
+              <div class="calc2-saved-left">
+                <span class="calc2-saved-label">Saved expressions</span>
+                <select id="calculator-saved-expressions" class="dark-input calc2-saved-select"></select>
+              </div>
               <div class="calc2-saved-actions">
-                <button id="calculator-save-expression-btn" class="ghost-button" type="button" title="Save current expression">Save</button>
                 <button id="calculator-load-expression-btn" class="ghost-button" type="button" title="Load selected expression">Load</button>
+                <button id="calculator-save-expression-btn" class="ghost-button" type="button" title="Save current expression">Save</button>
                 <button id="calculator-delete-expression-btn" class="ghost-button" type="button" title="Delete selected expression">Delete</button>
-                <button id="calculator-export-expressions-btn" class="ghost-button" type="button" title="Export all saved expressions">Export</button>
-                <button id="calculator-import-expressions-btn" class="ghost-button" type="button" title="Import saved expressions">Import</button>
-                <input id="calculator-import-file" type="file" accept="application/json,.json" hidden />
+                <!-- ⋯ menu for import/export -->
+                <div class="calc2-more-wrap">
+                  <button id="calculator-more-btn" class="ghost-button calc2-more-btn" type="button" title="Import / Export">⋯</button>
+                  <div id="calculator-more-menu" class="calc2-more-menu" hidden>
+                    <button id="calculator-export-expressions-btn" class="calc2-menu-item" type="button">Export all</button>
+                    <button id="calculator-import-expressions-btn" class="calc2-menu-item" type="button">Import</button>
+                  </div>
+                  <input id="calculator-import-file" type="file" accept="application/json,.json" hidden />
+                </div>
               </div>
             </div>
 
-            <!-- Primary actions -->
+            <!-- Primary action only — preview is live -->
             <div class="calc2-primary-actions">
-              <button id="calculator-preview-btn" class="ghost-button" type="button">Preview</button>
-              <button id="calculator-apply-btn" class="calc2-apply-btn" type="button">Apply to Layer</button>
+              <!-- Hidden preview btn kept for bootstrap.js compatibility -->
+              <button id="calculator-preview-btn" class="ghost-button" type="button" hidden>Preview</button>
+              <button id="calculator-apply-btn" class="calc2-apply-btn" type="button">Apply to layer</button>
             </div>
           </section>
         </div>
@@ -633,7 +919,7 @@
           <div class="quick-style-row">
             <label class="field-stack">
               <span class="field-label">Color</span>
-              <input id="single-style-color" class="dark-input color-input color-input-lg" type="color" value="#1db7a6" />
+              <input id="single-style-color" class="dark-input color-input color-input-lg" type="color" value="#F26E22" />
             </label>
             <label class="field-stack">
               <span class="field-label">Stroke color</span>
@@ -674,7 +960,11 @@
               <input id="quick-stroke-width-cat" class="dark-input" type="number" min="0" max="24" value="2" style="width:5rem" />
             </label>
           </div>
-          <div id="categorized-values-wrap" class="cat-value-list"></div>
+          <div class="class-list-scroll-zone">
+            <div class="class-list-inner">
+              <div id="categorized-values-wrap" class="cat-value-list" style="gap:0;margin:0"></div>
+            </div>
+          </div>
         </div>
 
         <!-- ── GRADUATED ───────────────────────────────────────── -->
@@ -693,7 +983,7 @@
             <label class="field-stack">
               <span class="field-label">Color ramp</span>
               <select id="graduated-ramp" class="dark-input">
-                <option value="teal-blue">Teal → Blue</option>
+                <option value="orange-warm">Orange → Warm</option>
                 <option value="gold-red">Gold → Red</option>
                 <option value="mint-purple">Mint → Purple</option>
               </select>
@@ -716,7 +1006,11 @@
               </select>
             </label>
           </div>
-          <div id="graduated-breaks-wrap" class="rule-list" style="margin-top:.5rem"></div>
+          <div class="class-list-scroll-zone">
+            <div class="class-list-inner">
+              <div id="graduated-breaks-wrap" class="rule-list" style="margin-top:0"></div>
+            </div>
+          </div>
         </div>
 
         <!-- ── RULE BASED ──────────────────────────────────────── -->
@@ -762,21 +1056,21 @@
 
         <!-- Hidden inputs kept for JS compatibility (read by readAdvancedStyleControls) -->
         <div hidden aria-hidden="true">
-          <input id="point-fill-color"       type="color" value="#1db7a6" />
+          <input id="point-fill-color"       type="color" value="#F26E22" />
           <input id="point-stroke-color"     type="color" value="#ffffff" />
           <input id="point-stroke-width"     type="number" value="2" />
           <input id="point-opacity"          type="number" value="0.95" />
           <input id="point-icon-url"         type="url" />
-          <input id="line-color"             type="color" value="#1db7a6" />
+          <input id="line-color"             type="color" value="#F26E22" />
           <input id="line-width"             type="number" value="3" />
           <input id="line-opacity"           type="number" value="0.92" />
           <select id="line-dash-style"><option value="solid">Solid</option></select>
           <input id="line-dash-pattern"      type="text" />
           <select id="line-cap"><option value="round">Round</option></select>
           <select id="line-join"><option value="round">Round</option></select>
-          <input id="polygon-fill-color"     type="color" value="#1db7a6" />
+          <input id="polygon-fill-color"     type="color" value="#F26E22" />
           <input id="polygon-fill-opacity"   type="number" value="0.22" />
-          <input id="polygon-stroke-color"   type="color" value="#1db7a6" />
+          <input id="polygon-stroke-color"   type="color" value="#F26E22" />
           <input id="polygon-stroke-width"   type="number" value="3" />
           <input id="polygon-stroke-opacity" type="number" value="0.92" />
           <select id="polygon-stroke-style"><option value="solid">Solid</option></select>
@@ -796,9 +1090,11 @@
             <span>Enable labels</span>
           </label>
           <div id="label-options-wrap" class="label-options-wrap" hidden>
-            <section class="label-option-group">
-              <h4>Label Source</h4>
-              <div class="field-grid">
+
+            <!-- ── Label Source ─────────────────────────────────── -->
+            <details class="label-accordion" open>
+              <summary class="label-accordion-summary">Label Source</summary>
+              <div class="field-grid label-accordion-body">
                 <label class="field-stack">
                   <span class="field-label">Label field</span>
                   <select id="label-field" class="dark-input"></select>
@@ -808,10 +1104,12 @@
                   <input id="label-expression" class="dark-input" type="text" placeholder="{name} - {type}" />
                 </label>
               </div>
-            </section>
-            <section class="label-option-group">
-              <h4>Font</h4>
-              <div class="field-grid">
+            </details>
+
+            <!-- ── Font ────────────────────────────────────────── -->
+            <details class="label-accordion">
+              <summary class="label-accordion-summary">Font</summary>
+              <div class="field-grid label-accordion-body">
                 <label class="field-stack">
                   <span class="field-label">Font family</span>
                   <select id="label-font-family" class="dark-input">
@@ -829,50 +1127,80 @@
                   <span class="field-label">Text color</span>
                   <input id="label-color" class="dark-input color-input" type="color" value="#f8fafc" />
                 </label>
-                <label class="field-stack">
-                  <span class="field-label">Text opacity</span>
-                  <input id="label-opacity" class="dark-input" type="number" min="0" max="1" step="0.05" value="1" />
-                </label>
+                <!-- FIX: opacity as 0–100 slider instead of raw 0–1 number input -->
+                <div class="field-stack">
+                  <span class="field-label">Text opacity <span class="field-unit-value" id="label-opacity-display">100%</span></span>
+                  <div class="label-slider-row">
+                    <input id="label-opacity-slider" class="label-range-slider" type="range" min="0" max="100" step="1" value="100" />
+                    <!-- Hidden input keeps the 0–1 value JS reads -->
+                    <input id="label-opacity" type="hidden" value="1" />
+                  </div>
+                </div>
                 <label class="field-stack checkbox-field">
-                  <span class="field-label">Text flags</span>
+                  <span class="field-label">Style</span>
                   <label class="checkbox-label"><input id="label-bold" type="checkbox" /> <span>Bold</span></label>
                   <label class="checkbox-label"><input id="label-italic" type="checkbox" /> <span>Italic</span></label>
                   <label class="checkbox-label"><input id="label-underline" type="checkbox" /> <span>Underline</span></label>
                 </label>
               </div>
-            </section>
-            <section class="label-option-group">
-              <h4>Halo &amp; Background</h4>
-              <div class="field-grid">
+            </details>
+
+            <!-- ── Halo & Background ───────────────────────────── -->
+            <details class="label-accordion">
+              <summary class="label-accordion-summary">Halo &amp; Background</summary>
+              <div class="field-grid label-accordion-body">
                 <label class="field-stack">
                   <span class="field-label">Halo color</span>
-                  <input id="label-halo-color" class="dark-input color-input" type="color" value="#07111d" />
+                  <input id="label-halo-color" class="dark-input color-input" type="color" value="#111111" />
                 </label>
                 <label class="field-stack">
                   <span class="field-label">Halo size</span>
                   <input id="label-halo-size" class="dark-input" type="number" min="0" max="12" value="2" />
                 </label>
-                <label class="field-stack">
-                  <span class="field-label">Background</span>
-                  <input id="label-background-color" class="dark-input" type="text" value="transparent" />
-                </label>
-                <label class="field-stack">
+
+                <!-- FIX: background color — enable toggle + color picker -->
+                <div class="field-stack">
+                  <span class="field-label">Background color</span>
+                  <div class="color-enable-row">
+                    <input id="label-bg-enable" type="checkbox" class="color-enable-check" />
+                    <input id="label-bg-picker" class="dark-input color-input color-enable-picker" type="color" value="#ffffff" disabled />
+                    <span class="color-enable-hint" id="label-bg-hint">None</span>
+                    <!-- Hidden input JS reads -->
+                    <input id="label-background-color" type="hidden" value="transparent" />
+                  </div>
+                </div>
+
+                <!-- FIX: border color — enable toggle + color picker -->
+                <div class="field-stack">
                   <span class="field-label">Border color</span>
-                  <input id="label-border-color" class="dark-input" type="text" value="transparent" />
-                </label>
+                  <div class="color-enable-row">
+                    <input id="label-border-enable" type="checkbox" class="color-enable-check" />
+                    <input id="label-border-picker" class="dark-input color-input color-enable-picker" type="color" value="#ffffff" disabled />
+                    <span class="color-enable-hint" id="label-border-hint">None</span>
+                    <!-- Hidden input JS reads -->
+                    <input id="label-border-color" type="hidden" value="transparent" />
+                  </div>
+                </div>
+
                 <label class="field-stack">
                   <span class="field-label">Border radius</span>
-                  <input id="label-border-radius" class="dark-input" type="number" min="0" max="24" value="0" />
+                  <!-- FIX: added px unit hint -->
+                  <div class="input-with-unit">
+                    <input id="label-border-radius" class="dark-input" type="number" min="0" max="24" value="0" />
+                    <span class="input-unit">px</span>
+                  </div>
                 </label>
                 <label class="field-stack checkbox-field">
                   <span class="field-label">Effects</span>
-                  <label class="checkbox-label"><input id="label-shadow" type="checkbox" /> <span>Shadow</span></label>
+                  <label class="checkbox-label"><input id="label-shadow" type="checkbox" /> <span>Drop shadow</span></label>
                 </label>
               </div>
-            </section>
-            <section class="label-option-group">
-              <h4>Placement</h4>
-              <div class="field-grid">
+            </details>
+
+            <!-- ── Placement ───────────────────────────────────── -->
+            <details class="label-accordion">
+              <summary class="label-accordion-summary">Placement</summary>
+              <div class="field-grid label-accordion-body">
                 <label class="field-stack">
                   <span class="field-label">Point placement</span>
                   <select id="label-placement" class="dark-input">
@@ -899,24 +1227,42 @@
                     <option value="interior">Interior</option>
                   </select>
                 </label>
-                <label class="field-stack">
-                  <span class="field-label">Offset X/Y</span>
-                  <div class="inline-field-grid pair-field-grid">
-                    <input id="label-offset-x" class="dark-input" type="number" value="0" />
-                    <input id="label-offset-y" class="dark-input" type="number" value="0" />
+                <!-- FIX: offset pair with px sublabels -->
+                <div class="field-stack">
+                  <span class="field-label">Offset (px)</span>
+                  <div class="inline-field-grid pair-field-grid label-offset-grid">
+                    <div class="input-with-sublabel">
+                      <input id="label-offset-x" class="dark-input" type="number" value="0" />
+                      <span class="input-sublabel">X</span>
+                    </div>
+                    <div class="input-with-sublabel">
+                      <input id="label-offset-y" class="dark-input" type="number" value="0" />
+                      <span class="input-sublabel">Y</span>
+                    </div>
                   </div>
-                </label>
+                </div>
+                <!-- FIX: rotation with ° unit -->
                 <label class="field-stack">
                   <span class="field-label">Rotation</span>
-                  <input id="label-rotation" class="dark-input" type="number" min="-180" max="180" value="0" />
-                </label>
-                <label class="field-stack">
-                  <span class="field-label">Visible zoom</span>
-                  <div class="inline-field-grid pair-field-grid">
-                    <input id="label-min-zoom" class="dark-input" type="number" min="0" max="22" value="0" />
-                    <input id="label-max-zoom" class="dark-input" type="number" min="0" max="22" value="22" />
+                  <div class="input-with-unit">
+                    <input id="label-rotation" class="dark-input" type="number" min="-180" max="180" value="0" />
+                    <span class="input-unit">°</span>
                   </div>
                 </label>
+                <!-- FIX: zoom range with min/max sublabels -->
+                <div class="field-stack">
+                  <span class="field-label">Visible zoom (0 – 22)</span>
+                  <div class="inline-field-grid pair-field-grid label-offset-grid">
+                    <div class="input-with-sublabel">
+                      <input id="label-min-zoom" class="dark-input" type="number" min="0" max="22" value="0" />
+                      <span class="input-sublabel">Min</span>
+                    </div>
+                    <div class="input-with-sublabel">
+                      <input id="label-max-zoom" class="dark-input" type="number" min="0" max="22" value="22" />
+                      <span class="input-sublabel">Max</span>
+                    </div>
+                  </div>
+                </div>
                 <label class="field-stack">
                   <span class="field-label">Priority</span>
                   <input id="label-priority" class="dark-input" type="number" min="0" max="10" value="5" />
@@ -926,9 +1272,101 @@
                   <label class="checkbox-label"><input id="label-avoid-overlap" type="checkbox" checked /> <span>Avoid overlap</span></label>
                 </label>
               </div>
-            </section>
+            </details>
+
           </div>
         </div>
+
+        <!-- Inline script: wires up the new UI controls to their hidden JS-facing inputs -->
+        <script>
+        (function () {
+          // Opacity slider → hidden input (0–1)
+          var opacitySlider = document.getElementById("label-opacity-slider");
+          var opacityHidden = document.getElementById("label-opacity");
+          var opacityDisplay = document.getElementById("label-opacity-display");
+          if (opacitySlider) {
+            opacitySlider.addEventListener("input", function () {
+              var pct = Number(opacitySlider.value);
+              opacityHidden.value = String(pct / 100);
+              opacityDisplay.textContent = pct + "%";
+              opacitySlider.style.setProperty("--pct", pct);
+            });
+          }
+
+          // Color-enable rows: checkbox + picker → hidden CSS-color input
+          function wireColorEnable(checkId, pickerId, hintId, hiddenId) {
+            var check  = document.getElementById(checkId);
+            var picker = document.getElementById(pickerId);
+            var hint   = document.getElementById(hintId);
+            var hidden = document.getElementById(hiddenId);
+            if (!check || !picker || !hidden) return;
+            function sync() {
+              if (check.checked) {
+                picker.disabled = false;
+                picker.style.opacity = "1";
+                hidden.value = picker.value;
+                if (hint) hint.textContent = picker.value;
+              } else {
+                picker.disabled = true;
+                picker.style.opacity = "0.35";
+                hidden.value = "transparent";
+                if (hint) hint.textContent = "None";
+              }
+            }
+            check.addEventListener("change", sync);
+            picker.addEventListener("input", sync);
+            sync();
+          }
+          wireColorEnable("label-bg-enable",     "label-bg-picker",     "label-bg-hint",     "label-background-color");
+          wireColorEnable("label-border-enable",  "label-border-picker", "label-border-hint", "label-border-color");
+
+          // Patch setLabelControls to also restore slider + color-enable state
+          // Runs after the main scripts load
+          window.addEventListener("load", function () {
+            var _orig = window.setLabelControls;
+            if (typeof _orig !== "function") return;
+            window.setLabelControls = function (layerRecord) {
+              _orig(layerRecord);
+              var style = layerRecord && layerRecord.labelConfig && layerRecord.labelConfig.style;
+              if (!style) return;
+              // Restore opacity slider
+              var opPct = Math.round(Number(style.opacity ?? 1) * 100);
+              if (opacitySlider) {
+                opacitySlider.value = String(opPct);
+                opacitySlider.style.setProperty("--pct", opPct);
+              }
+              if (opacityDisplay) opacityDisplay.textContent = opPct + "%";
+              // Restore background color enable
+              var bgCheck  = document.getElementById("label-bg-enable");
+              var bgPicker = document.getElementById("label-bg-picker");
+              var bgHint   = document.getElementById("label-bg-hint");
+              if (bgCheck && bgPicker) {
+                var bgVal = style.backgroundColor || "transparent";
+                var bgOn  = bgVal !== "transparent" && bgVal !== "";
+                bgCheck.checked = bgOn;
+                if (bgOn) bgPicker.value = bgVal;
+                bgPicker.disabled  = !bgOn;
+                bgPicker.style.opacity = bgOn ? "1" : "0.35";
+                if (bgHint) bgHint.textContent = bgOn ? bgVal : "None";
+              }
+              // Restore border color enable
+              var bdCheck  = document.getElementById("label-border-enable");
+              var bdPicker = document.getElementById("label-border-picker");
+              var bdHint   = document.getElementById("label-border-hint");
+              if (bdCheck && bdPicker) {
+                var bdVal = style.borderColor || "transparent";
+                var bdOn  = bdVal !== "transparent" && bdVal !== "";
+                bdCheck.checked = bdOn;
+                if (bdOn) bdPicker.value = bdVal;
+                bdPicker.disabled  = !bdOn;
+                bdPicker.style.opacity = bdOn ? "1" : "0.35";
+                if (bdHint) bdHint.textContent = bdOn ? bdVal : "None";
+              }
+            };
+          });
+        })();
+        </script>
+
         </section>
         <div class="modal-actions-row">
           <button id="reset-symbology-btn" class="ghost-button" type="button">Reset</button>
@@ -1228,13 +1666,19 @@
             <button class="help-nav-item" data-help-section="layers">Layers</button>
             <button class="help-nav-item" data-help-section="import">Import</button>
             <button class="help-nav-item" data-help-section="attribute-table">Attribute Table</button>
+            <button class="help-nav-item" data-help-section="filter">Filter</button>
             <button class="help-nav-item" data-help-section="field-calculator">Field Calculator</button>
             <button class="help-nav-item" data-help-section="symbology">Symbology</button>
+            <button class="help-nav-item" data-help-section="raster-style">Raster Symbology</button>
             <div class="help-nav-group-label">Map Tools</div>
             <button class="help-nav-item" data-help-section="drawing">Drawing &amp; Editing</button>
+            <button class="help-nav-item" data-help-section="locate">Locate</button>
+            <button class="help-nav-item" data-help-section="measure">Measure</button>
+            <button class="help-nav-item" data-help-section="basemap">Basemap &amp; Theme</button>
             <button class="help-nav-item" data-help-section="interpolation">Interpolation</button>
             <button class="help-nav-item" data-help-section="heatmap">Heatmap</button>
             <button class="help-nav-item" data-help-section="viewshed">Viewshed</button>
+            <button class="help-nav-item" data-help-section="watershed">Watershed</button>
             <div class="help-nav-group-label">Export</div>
             <button class="help-nav-item" data-help-section="export">Export</button>
             <button class="help-nav-item" data-help-section="projects">Projects</button>
@@ -1284,7 +1728,9 @@
     <script src="./app/40-project.js"></script>
     <script src="./app/50-map-tools.js"></script>
     <script src="./app/99-help-content.js"></script>
+    <script src="./app/dem-utils.js"></script>
     <script src="./app/60-viewshed.js"></script>
+    <script src="./app/70-watershed.js"></script>
 
     <!-- ── Splash controller ── -->
     <script>
@@ -1337,6 +1783,8 @@
         el.setAttribute('stroke-dashoffset', len);
       });
 
+      var versionText = document.querySelector('.splash-version-text');
+
       var tl = anime.timeline({
         loop:     false,
         autoplay: true,
@@ -1349,7 +1797,7 @@
       tl
         // ── APPEAR ──────────────────────────────────────────────
 
-        // STEP 1 — draw globe lines in, one by one
+        // STEP 1 — draw globe lines in, one by one (cyan)
         .add({
           targets:          lines,
           strokeDashoffset: 0,
@@ -1357,7 +1805,7 @@
           duration: 2000,
           delay:    anime.stagger(110)
         })
-        // STEP 2 — neon-sign ignite flicker
+        // STEP 2 — neon-sign ignite flicker (cyan)
         .add({
           targets: brandText,
           opacity: [
@@ -1373,12 +1821,63 @@
           offset: '-=800'
         })
 
-        // ── HOLD ─────────────────────────────────────────────────
+        // ── HOLD then COLOUR FLICKER ──────────────────────────────
 
-        // STEP 3 — hold the full lit frame
+        // STEP 3a — brief hold in cyan
         .add({
           targets:  [lines, brandText],
-          duration: 1800
+          duration: 600
+        })
+
+        // STEP 3b — colour flicker on globe lines: cyan → dark → orange
+        .add({
+          targets: lines,
+          stroke: [
+            { value: '#00f2fe', duration: 60  },
+            { value: '#001820', duration: 50  },
+            { value: '#00f2fe', duration: 60  },
+            { value: '#001820', duration: 80  },
+            { value: '#00f2fe', duration: 50  },
+            { value: '#001820', duration: 60  },
+            { value: '#F26E22', duration: 180 }
+          ],
+          easing: 'linear'
+        })
+        // STEP 3c — brand text flicker, parallel with lines
+        .add({
+          targets: brandText,
+          color: [
+            { value: '#00f2fe', duration: 60  },
+            { value: '#001820', duration: 50  },
+            { value: '#00f2fe', duration: 60  },
+            { value: '#001820', duration: 80  },
+            { value: '#00f2fe', duration: 50  },
+            { value: '#001820', duration: 60  },
+            { value: '#F26E22', duration: 180 }
+          ],
+          easing: 'linear',
+          offset: '-=540'
+        })
+        // STEP 3d — (V2) flickers in, parallel with lines and text
+        .add({
+          targets: versionText,
+          opacity: [
+            { value: 0.9, duration: 60  },
+            { value: 0.0, duration: 50  },
+            { value: 0.8, duration: 60  },
+            { value: 0.0, duration: 80  },
+            { value: 0.9, duration: 50  },
+            { value: 0.0, duration: 60  },
+            { value: 1.0, duration: 180 }
+          ],
+          easing: 'linear',
+          offset: '-=540'
+        })
+
+        // STEP 3d — hold in orange
+        .add({
+          targets:  [lines, brandText, versionText],
+          duration: 800
         })
 
         // ── DISAPPEAR ────────────────────────────────────────────
@@ -1395,6 +1894,13 @@
             { value: 0.0, duration: 120 }
           ],
           easing: 'linear'
+        })
+        .add({
+          targets: versionText,
+          opacity: 0,
+          duration: 200,
+          easing: 'linear',
+          offset: '-=320'
         })
         // STEP 5 — erase globe lines back to nothing (reverse draw)
         .add({

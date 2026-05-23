@@ -17,20 +17,25 @@ const basemapLayers = {
     maxZoom: 20,
     attribution: "&copy; Google",
   }),
+  topo: L.tileLayer("https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png", {
+    maxZoom: 17,
+    subdomains: "abc",
+    attribution: "&copy; <a href=\"https://opentopomap.org\" target=\"_blank\">OpenTopoMap</a> &copy; <a href=\"https://www.openstreetmap.org/copyright\" target=\"_blank\">OpenStreetMap</a> contributors",
+  }),
 };
 
 let activeBasemap = "dark";
 basemapLayers.dark.addTo(map);
 
 const palette = [
-  "#1db7a6",
+  "#F26E22",
   "#4f8cff",
   "#ffb454",
   "#ff6b8b",
   "#b388ff",
   "#57d163",
-  "#ff8a4c",
-  "#43c2ff",
+  "#e84040",
+  "#60a0d8",
 ];
 
 const fileInput = document.getElementById("file-input");
@@ -40,10 +45,13 @@ const clearAllBtn = document.getElementById("clear-all-btn");
 const openLayerModalBtn = document.getElementById("open-layer-modal-btn");
 const statusMessage = document.getElementById("status-message");
 const basemapLabel = document.getElementById("basemap-label");
+const demToggleBtn = document.getElementById("dem-toggle-btn");
 const activeEditLayerName = document.getElementById("active-edit-layer-name");
 const attributeTableInfo = document.getElementById("attribute-table-info");
 const attributeTableWrap = document.getElementById("attribute-table-wrap");
 const tableLayerLabel = document.getElementById("table-layer-label");
+const tableLayerRenameBtn = document.getElementById("table-layer-rename-btn");
+const tableLayerRenameInput = document.getElementById("table-layer-rename-input");
 const tableEditStatusBtn = document.getElementById("table-edit-status-btn");
 const tableUndoBtn = document.getElementById("table-undo-btn");
 const tableRedoBtn = document.getElementById("table-redo-btn");
@@ -92,6 +100,8 @@ const calculatorImportExpressionsBtn = document.getElementById("calculator-impor
 const calculatorImportFile = document.getElementById("calculator-import-file");
 const calculatorPreviewBtn = document.getElementById("calculator-preview-btn");
 const calculatorApplyBtn = document.getElementById("calculator-apply-btn");
+const calculatorMoreBtn = document.getElementById("calculator-more-btn");
+const calculatorMoreMenu = document.getElementById("calculator-more-menu");
 const calculatorModeInputs = document.querySelectorAll('input[name="calculator-mode"]');
 const tableResizer = document.getElementById("table-resizer");
 const toggleAttributeTableBtn = document.getElementById("toggle-attribute-table-btn");
@@ -268,13 +278,13 @@ const systemThemeMedia = window.matchMedia("(prefers-color-scheme: dark)");
 const canAnimate = typeof anime === "function";
 
 const colorRamps = {
-  "teal-blue": ["#1db7a6", "#43c2ff"],
+  "orange-warm": ["#F26E22", "#ffb454"],
   "gold-red": ["#ffcc66", "#ff6b6b"],
   "mint-purple": ["#71d9b6", "#9a6bff"],
 };
 
 const interpolationColorRamps = {
-  "terrain-glow": ["#123b7a", "#1db7a6", "#d7d56f", "#ff7c43"],
+  "terrain-glow": ["#123b7a", "#F26E22", "#d7d56f", "#ff7c43"],
   "viridis-edge": ["#46327e", "#365c8d", "#277f8e", "#4ac16d", "#fde725"],
   "sunset-heat": ["#2d1248", "#7c1d6f", "#d14c65", "#f28f3b", "#ffe082"],
   "ice-fire": ["#113a6b", "#2bc0c7", "#f1f5f9", "#ff8a5b", "#7b1e3f"],
@@ -397,7 +407,7 @@ function createDrawControlForGeometry(layerRecord = null) {
       polyline: allowLine
         ? {
             shapeOptions: {
-              color: "#43c2ff",
+              color: "#60a0d8",
               weight: 3,
             },
           }
@@ -407,9 +417,9 @@ function createDrawControlForGeometry(layerRecord = null) {
             allowIntersection: false,
             showArea: true,
             shapeOptions: {
-              color: "#1db7a6",
+              color: "#F26E22",
               weight: 3,
-              fillColor: "#1db7a6",
+              fillColor: "#F26E22",
               fillOpacity: 0.24,
             },
           }
@@ -557,9 +567,17 @@ function applyAppBasemap(themeName) {
   if (basemapLabel) {
     basemapLabel.textContent = getBasemapLabel();
   }
+  // Redraw GeoTIFF tile layers after basemap swap (prevents canvas tiles going blank)
+  if (typeof loadedLayers !== "undefined") {
+    loadedLayers.forEach((lr) => {
+      if (lr.isVisible !== false && lr.rasterTileLayer?.redraw) {
+        lr.rasterTileLayer.redraw();
+      }
+    });
+  }
 }
 
-const basemapList = ["dark", "light", "satellite"];
+const basemapList = ["dark", "light", "satellite", "topo"];
 
 function cycleBasemap() {
   const idx = basemapList.indexOf(activeBasemap);
@@ -570,6 +588,15 @@ function cycleBasemap() {
   activeBasemap = nextBasemap;
   if (basemapLabel) {
     basemapLabel.textContent = getBasemapLabel();
+  }
+  // Redraw GeoTIFF tile layers — Leaflet's internal _resetView on baselayer
+  // swap can blank canvas tiles; a redraw forces them to re-render on top.
+  if (typeof loadedLayers !== "undefined") {
+    loadedLayers.forEach((lr) => {
+      if (lr.isVisible !== false && lr.rasterTileLayer?.redraw) {
+        lr.rasterTileLayer.redraw();
+      }
+    });
   }
 }
 
@@ -583,8 +610,35 @@ function getBasemapLabel() {
   if (activeBasemap === "light") {
     return "CartoDB Light";
   }
+  if (activeBasemap === "topo") {
+    return "OpenTopoMap";
+  }
   return "Satellite";
 }
+
+function selectBasemap(id) {
+  if (!basemapLayers[id] || activeBasemap === id) return;
+  map.removeLayer(basemapLayers[activeBasemap]);
+  basemapLayers[id].addTo(map);
+  activeBasemap = id;
+  if (basemapLabel) basemapLabel.textContent = getBasemapLabel();
+  if (typeof loadedLayers !== "undefined") {
+    loadedLayers.forEach((lr) => {
+      if (lr.isVisible !== false && lr.rasterTileLayer?.redraw) {
+        lr.rasterTileLayer.redraw();
+      }
+    });
+  }
+}
+
+// Tile URL templates for preview canvases — keyed by basemap id.
+// {s} is replaced with a fixed subdomain; {z}/{x}/{y} filled at draw time.
+const basemapTileTemplates = {
+  dark:      { url: "https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png" },
+  light:     { url: "https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png" },
+  satellite: { url: "https://mt1.google.com/vt/lyrs=y&z={z}&x={x}&y={y}" },
+  topo:      { url: "https://a.tile.opentopomap.org/{z}/{x}/{y}.png" },
+};
 
 function applyTheme(themePreference) {
   const resolvedTheme = getResolvedTheme(themePreference);
@@ -697,10 +751,10 @@ const INLINE_BRAND_LOGO = `
   xmlns="http://www.w3.org/2000/svg"
   role="img"
   aria-label="Spatial-D.E.C.M logo">
-  <g transform="translate(-345.00288,-151.11921)">
+  <g>
     <path
       fill="currentColor"
-      transform="matrix(0.26458333,0,0,0.26458333,304.14216,74.533795)"
+      transform="matrix(0.26458333,0,0,0.26458333,-40.860720,-76.585415)"
       d="m 163.70088,340.85676 q -2.53333,0 -4.66667,-1.26667 -2.06666,-1.26666 -3.33333,-3.33333 -1.26667,-2.13334 -1.26667,-4.66667 v -3.66667 h 8.80001 v 3.26667 q 0,0.33333 0.2,0.6 0.26666,0.2 0.6,0.2 h 28.73334 q 0.33334,0 0.53334,-0.2 0.26666,-0.26667 0.26666,-0.6 v -9.13334 q 0,-0.33333 -0.26666,-0.53333 -0.2,-0.2 -0.53334,-0.2 h -29.06668 q -2.53333,0 -4.66667,-1.26667 -2.06666,-1.26667 -3.33333,-3.33333 -1.26667,-2.13334 -1.26667,-4.73334 v -9.86667 q 0,-2.53334 1.26667,-4.6 1.26667,-2.13334 3.33333,-3.40001 2.13334,-1.26666 4.66667,-1.26666 h 29.46668 q 2.53334,0 4.60001,1.26666 2.13333,1.26667 3.4,3.40001 1.26667,2.06666 1.26667,4.6 v 3.66667 h -8.86668 v -3.26667 q 0,-0.33334 -0.26666,-0.53334 -0.2,-0.26666 -0.53334,-0.26666 h -28.73334 q -0.33334,0 -0.6,0.26666 -0.2,0.2 -0.2,0.53334 v 9.13334 q 0,0.33333 0.2,0.53333 0.26666,0.2 0.6,0.2 h 29.13334 q 2.53334,0 4.60001,1.26667 2.13333,1.26666 3.4,3.4 1.26667,2.06667 1.26667,4.66667 v 9.86667 q 0,2.53333 -1.26667,4.66667 -1.26667,2.06667 -3.4,3.33333 -2.06667,1.26667 -4.60001,1.26667 z m 51.86671,15.33334 v 0 -54.00003 h 30.06668 q 2.53334,0 4.6,1.26667 2.13334,1.26667 3.33334,3.33334 1.26667,2.06666 1.26667,4.6 v 20.26668 q 0,2.53333 -1.26667,4.6 -1.2,2.06667 -3.33334,3.33333 -2.06666,1.26667 -4.6,1.26667 h -21.33334 v 15.33334 z m 9.53334,-24.06668 h 20.20001 q 0.33333,0 0.53333,-0.2 0.26667,-0.26666 0.26667,-0.6 v -19.60001 q 0,-0.33333 -0.26667,-0.53333 -0.2,-0.26667 -0.53333,-0.26667 h -20.20001 q -0.33334,0 -0.6,0.26667 -0.2,0.2 -0.2,0.53333 v 19.60001 q 0,0.33334 0.2,0.6 0.26666,0.2 0.6,0.2 z m 49.79999,8.73334 q -2.53333,0 -4.66667,-1.26667 -2.06666,-1.26666 -3.33333,-3.33333 -1.2,-2.06667 -1.2,-4.6 v -14.53334 h 30.53335 v -5.40001 q 0,-0.33333 -0.26667,-0.53333 -0.2,-0.26667 -0.53333,-0.26667 h -29.73335 v -8.73334 h 30.06668 q 2.53334,0 4.6,1.26667 2.13334,1.26667 3.33334,3.33334 1.26667,2.06666 1.26667,4.6 v 29.46668 z m 0.33334,-8.73334 h 21.00001 v -7.13333 h -21.80001 v 6.33333 q 0,0.33334 0.2,0.6 0.26666,0.2 0.6,0.2 z m 52.00004,8.73334 q -2.53334,0 -4.6,-1.26667 -2.06667,-1.26666 -3.33334,-3.33333 -1.26667,-2.06667 -1.26667,-4.6 V 290.3234 h 8.73334 v 11.86667 h 15.06668 v 8.73334 h -15.06668 v 20.40001 q 0,0.33334 0.2,0.6 0.26667,0.2 0.6,0.2 h 14.26668 v 8.73334 z m 26.06672,0 v 0 -38.66669 h 8.73333 v 38.66669 z m 0,-42.53335 v 0 -8.80001 h 8.73333 v 8.80001 z m 29.33333,42.53335 q -2.53333,0 -4.66667,-1.26667 -2.06667,-1.26666 -3.33333,-3.33333 -1.2,-2.06667 -1.2,-4.6 v -14.53334 h 30.53335 v -5.40001 q 0,-0.33333 -0.26667,-0.53333 -0.2,-0.26667 -0.53333,-0.26667 h -29.73335 v -8.73334 h 30.06668 q 2.53333,0 4.6,1.26667 2.13334,1.26667 3.33334,3.33334 1.26666,2.06666 1.26666,4.6 v 29.46668 z m 0.33334,-8.73334 h 21.00001 v -7.13333 h -21.80002 v 6.33333 q 0,0.33334 0.20001,0.6 0.26666,0.2 0.6,0.2 z m 50.46674,8.73334 q -2.53333,0 -4.6,-1.26667 -2.06667,-1.26666 -3.33334,-3.33333 -1.26666,-2.06667 -1.26666,-4.6 v -42.20003 h 8.8 v 41.86669 q 0,0.33334 0.2,0.6 0.26667,0.2 0.6,0.2 h 7.40001 v 8.73334 z m 19.00003,-15.33334 v 0 -8.73334 h 27.26668 v 8.73334 z m 40.40004,15.33334 v -48.00002 h 38.66669 q 2.53333,0 4.66667,1.26666 2.13333,1.26667 3.4,3.40001 1.26667,2.06666 1.26667,4.6 v 29.46668 q 0,2.53333 -1.26667,4.66667 -1.26667,2.06667 -3.4,3.33333 -2.13334,1.26667 -4.66667,1.26667 z m 9.53334,-8.86667 h 28.73335 q 0.33333,0 0.6,-0.2 0.26666,-0.26667 0.26666,-0.6 v -28.66668 q 0,-0.33334 -0.26666,-0.53334 -0.26667,-0.26666 -0.6,-0.26666 h -28.73335 q -0.33334,0 -0.6,0.26666 -0.2,0.2 -0.2,0.53334 v 28.66668 q 0,0.33333 0.2,0.6 0.26666,0.2 0.6,0.2 z m 51.8,8.86667 v 0 -8.73334 h 8.73334 v 8.73334 z m 21.39994,0 v -48.00002 h 44.20002 v 8.86667 h -35.33335 v 10.66667 h 28.40001 v 8.93334 h -28.40001 v 10.66667 h 35.33335 v 8.86667 z m 56.80007,0 v 0 -8.73334 h 8.73334 v 8.73334 z m 30.53331,0 q -2.53334,0 -4.66667,-1.26667 -2.06667,-1.26666 -3.33334,-3.33333 -1.26666,-2.13334 -1.26666,-4.66667 v -29.46668 q 0,-2.53334 1.26666,-4.6 1.26667,-2.13334 3.33334,-3.40001 2.13333,-1.26666 4.66667,-1.26666 h 38.60002 v 8.86667 h -36.73336 q -1.06666,0 -1.73333,0.6 -0.6,0.6 -0.6,1.73333 v 25.60002 q 0,1.06666 0.6,1.73333 0.66667,0.6 1.73333,0.6 h 36.73336 v 8.86667 z m 51.40007,0 v 0 -8.73334 h 8.73334 v 8.73334 z m 21.26664,0 v -48.00002 h 9.66667 l 17.40001,20.73334 17.33334,-20.73334 h 9.73334 v 48.00002 h -8.86667 v -35.20002 l -18.20001,21.66668 -18.26668,-21.60001 v 35.13335 z"
     />
   </g>
@@ -708,31 +762,153 @@ const INLINE_BRAND_LOGO = `
 `
 
 function animateBrandLogo(shell) {
-  if (!shell || !canAnimate) {
-    return;
-  }
+  if (!shell) return;
 
-  // Subtle breathing pulse on the path fill opacity
+  // ── Ensure the path and shell are fully static ─────────────────────────
+  // Remove any previous anime tweens so they can't fight the glow driver.
+  if (typeof anime !== "undefined") anime.remove([shell, shell.querySelector("path")]);
+
+  // Lock path opacity and shell scale — only the glow moves.
   const path = shell.querySelector("path");
-  if (!path) {
-    return;
+  if (path) path.style.opacity = "1";
+  shell.style.transform = "none";
+
+  // ── Neon sign glow state machine ───────────────────────────────────────
+  //
+  // States and their visual profile:
+  //   full    — tube fully energised, strong warm bloom
+  //   dim     — partially lit, muted glow, desaturated orange
+  //   flicker — rapid voltage instability before settling
+  //   off     — tube dark, no glow at all
+  //   surge   — momentary over-voltage spike, extra-bright
+  //
+  // The shell's filter is set directly; no CSS transition is used so that
+  // hard cuts (like real neon) feel instant while slow settling is emulated
+  // by stepping through intermediate values in setInterval loops.
+
+  const COLOR_FULL    = "242, 110, 34";   // warm orange  — fully ionised
+  const COLOR_DIM     = "210,  90, 20";   // slightly cooler, less saturated
+  const COLOR_SURGE   = "255, 140, 60";   // hot white-orange surge
+
+  // Build a drop-shadow filter string from intensity (0–1) and a colour triplet.
+  // Grab the parent stage so we can animate its box-shadow instead of
+  // using filter:drop-shadow on the shell. drop-shadow bleeds outside the
+  // stage's border-radius and paints artefacts on surrounding elements.
+  // box-shadow is fully contained within the stage's border-box.
+  const stage = shell.closest(".brand-wordmark-stage") || shell.parentElement;
+
+  const BASE_SHADOW =
+    "inset 0 1px 0 rgba(242,110,34,0.12), inset 0 -1px 0 rgba(0,0,0,0.22), 0 2px 6px rgba(0,0,0,0.28)";
+
+  function applyGlow(intensity, colorRgb) {
+    // Always keep the shell filter neutral — no drop-shadow here.
+    shell.style.filter = "";
+    const clamped = Math.max(0, intensity);
+    if (clamped <= 0) {
+      stage.style.boxShadow = BASE_SHADOW;
+      return;
+    }
+    // Inset glow hugs the inner edge of the stage — contained, never bleeds.
+    const a1 = (0.6  * clamped).toFixed(3);
+    const a2 = (0.25 * clamped).toFixed(3);
+    const r1 = Math.round(6  * clamped);
+    const r2 = Math.round(14 * clamped);
+    stage.style.boxShadow = [
+      BASE_SHADOW,
+      `inset 0 0 ${r1}px rgba(${colorRgb},${a1})`,
+      `inset 0 0 ${r2}px rgba(${colorRgb},${a2})`,
+    ].join(", ");
   }
 
-  anime.remove([shell, path]);
-  anime({
-    targets: path,
-    opacity: [0.82, 1, 0.82],
-    duration: 3200,
-    easing: "easeInOutSine",
-    loop: true,
-  });
-  anime({
-    targets: shell,
-    scale: [1, 1.006, 1],
-    duration: 3200,
-    easing: "easeInOutSine",
-    loop: true,
-  });
+  // ── State definitions ────────────────────────────────────────────────
+  // Each state returns a promise that resolves when it's done so the loop
+  // can await it naturally.
+
+  function rand(min, max) {
+    return min + Math.random() * (max - min);
+  }
+  function delay(ms) {
+    return new Promise(r => setTimeout(r, ms));
+  }
+
+  async function stateFull() {
+    applyGlow(1.0, COLOR_FULL);
+    await delay(rand(2000, 5000));
+  }
+
+  async function stateDim() {
+    const level = rand(0.25, 0.55);
+    applyGlow(level, COLOR_DIM);
+    await delay(rand(800, 2500));
+  }
+
+  async function stateOff() {
+    applyGlow(0, COLOR_FULL);
+    await delay(rand(200, 900));
+  }
+
+  async function stateSurge() {
+    // Instant spike to over-bright, then hard-cut back to full
+    applyGlow(1.35, COLOR_SURGE);
+    await delay(rand(40, 90));
+    applyGlow(1.0, COLOR_FULL);
+    await delay(rand(60, 150));
+  }
+
+  async function stateFlicker() {
+    // 2–5 rapid on/off bursts, then the tube either settles or goes dim
+    const cycles = Math.floor(rand(2, 6));
+    for (let i = 0; i < cycles; i++) {
+      applyGlow(rand(0.05, 0.3), COLOR_DIM);
+      await delay(rand(40, 100));
+      applyGlow(rand(0.7, 1.0), COLOR_FULL);
+      await delay(rand(50, 130));
+    }
+    // Sometimes drop out, sometimes hold dim after the flicker burst
+    if (Math.random() < 0.4) {
+      applyGlow(0, COLOR_FULL);
+      await delay(rand(80, 300));
+    } else {
+      applyGlow(rand(0.3, 0.6), COLOR_DIM);
+      await delay(rand(200, 600));
+    }
+  }
+
+  // ── Weighted random state picker ─────────────────────────────────────
+  // Weights: full 45 | dim 25 | flicker 18 | off 9 | surge 3
+  const STATES = [
+    { weight: 45, fn: stateFull    },
+    { weight: 25, fn: stateDim     },
+    { weight: 18, fn: stateFlicker },
+    { weight:  9, fn: stateOff     },
+    { weight:  3, fn: stateSurge   },
+  ];
+  const TOTAL_WEIGHT = STATES.reduce((s, x) => s + x.weight, 0);
+
+  function pickState() {
+    let r = Math.random() * TOTAL_WEIGHT;
+    for (const s of STATES) {
+      r -= s.weight;
+      if (r <= 0) return s.fn;
+    }
+    return STATES[0].fn;
+  }
+
+  // ── Main loop ────────────────────────────────────────────────────────
+  // Pre-set the stage glow immediately so it's never unset from frame zero.
+  applyGlow(1.0, COLOR_FULL);
+
+  let _running = true;
+  (async () => {
+    applyGlow(1.0, COLOR_FULL);
+    await delay(1200); // brief "just turned on" hold before glitching starts
+    while (_running) {
+      await pickState()();
+    }
+  })();
+
+  // Expose a stop handle on the shell in case the logo is ever torn down.
+  shell._stopNeon = () => { _running = false; };
 }
 
 function initializeBrandLogo() {
@@ -996,7 +1172,7 @@ function interpolateColor(startColor, endColor, factor) {
 }
 
 function buildColorRamp(rampName, classCount) {
-  const [startColor, endColor] = colorRamps[rampName] || colorRamps["teal-blue"];
+  const [startColor, endColor] = colorRamps[rampName] || colorRamps["orange-warm"];
   const count = Math.max(1, Number.parseInt(classCount, 10) || 5);
 
   if (count === 1) {

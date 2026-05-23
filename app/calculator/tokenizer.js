@@ -22,12 +22,7 @@ function tokenizeCalculatorExpression(expression) {
     for (let step = 0; step < count; step += 1) {
       const char = source[index];
       index += 1;
-      if (char === "\n") {
-        line += 1;
-        column = 1;
-      } else {
-        column += 1;
-      }
+      if (char === "\n") { line += 1; column = 1; } else { column += 1; }
     }
   };
 
@@ -40,159 +35,106 @@ function tokenizeCalculatorExpression(expression) {
     return value;
   };
 
-  const keywords = new Set(["CASE", "WHEN", "THEN", "ELSE", "END", "AND", "OR", "NOT", "IS", "NULL", "TRUE", "FALSE"]);
+  const KEYWORDS = new Set(["CASE", "WHEN", "THEN", "ELSE", "END", "AND", "OR", "NOT", "IS", "NULL", "TRUE", "FALSE"]);
+  const DOLLAR_VARS = new Set(["area", "length", "x", "y"]);
 
   while (index < source.length) {
     const char = source[index];
     const next = source[index + 1];
 
-    if (/\s/.test(char)) {
-      advance();
-      continue;
-    }
+    // Whitespace
+    if (/\s/.test(char)) { advance(); continue; }
 
+    // Line comments (--)
     if (char === "-" && next === "-") {
-      while (index < source.length && source[index] !== "\n") {
-        advance();
-      }
+      while (index < source.length && source[index] !== "\n") advance();
       continue;
     }
 
-    if (char === "/" && next === "*") {
-      const startToken = { line, column };
-      advance(2);
+    // Single-quoted strings
+    if (char === "'") {
+      const startLine = line, startCol = column;
+      advance();
+      let value = "";
       let closed = false;
       while (index < source.length) {
-        if (source[index] === "*" && source[index + 1] === "/") {
-          advance(2);
-          closed = true;
-          break;
-        }
-        advance();
+        if (source[index] === "'" && source[index + 1] === "'") { value += "'"; advance(2); continue; }
+        if (source[index] === "'") { advance(); closed = true; break; }
+        value += source[index]; advance();
       }
       if (!closed) {
-        throw createCalculatorError("Unterminated block comment.", startToken);
+        const lastWord = value.split(/\s+/).pop();
+        throw createCalculatorError(
+          `Missing closing quote after '${lastWord || value}'`,
+          { line: startLine, column: startCol }
+        );
       }
+      pushToken("STRING", value, startLine, startCol);
       continue;
     }
 
-    if (char === "'") {
-      const startLine = line;
-      const startColumn = column;
-      advance();
-      let value = "";
-      while (index < source.length) {
-        if (source[index] === "'" && source[index + 1] === "'") {
-          value += "'";
-          advance(2);
-          continue;
-        }
-        if (source[index] === "'") {
-          advance();
-          pushToken("STRING", value, startLine, startColumn);
-          value = null;
-          break;
-        }
-        value += source[index];
-        advance();
-      }
-      if (value !== null) {
-        throw createCalculatorError("Unterminated string literal.", { line: startLine, column: startColumn });
-      }
-      continue;
-    }
-
+    // Double-quoted field references
     if (char === '"') {
-      const startLine = line;
-      const startColumn = column;
+      const startLine = line, startCol = column;
       advance();
       let value = "";
+      let closed = false;
       while (index < source.length) {
-        if (source[index] === '"' && source[index + 1] === '"') {
-          value += '"';
-          advance(2);
-          continue;
-        }
-        if (source[index] === '"') {
-          advance();
-          pushToken("FIELD", value, startLine, startColumn);
-          value = null;
-          break;
-        }
-        value += source[index];
-        advance();
+        if (source[index] === '"' && source[index + 1] === '"') { value += '"'; advance(2); continue; }
+        if (source[index] === '"') { advance(); closed = true; break; }
+        value += source[index]; advance();
       }
-      if (value !== null) {
-        throw createCalculatorError("Unterminated field reference.", { line: startLine, column: startColumn });
+      if (!closed) {
+        throw createCalculatorError(`Missing closing quote in field name "${value}"`, { line: startLine, column: startCol });
       }
+      pushToken("FIELD", value, startLine, startCol);
       continue;
     }
 
-    if (char === "[") {
-      const startLine = line;
-      const startColumn = column;
+    // $variable (geometry vars: $area $length $x $y)
+    if (char === "$") {
+      const startLine = line, startCol = column;
       advance();
-      let value = "";
-      while (index < source.length && source[index] !== "]") {
-        value += source[index];
-        advance();
+      const name = readWhile((c) => /[A-Za-z0-9_]/.test(c));
+      if (!name) throw createCalculatorError("Expected a variable name after '$'", { line: startLine, column: startCol });
+      if (!DOLLAR_VARS.has(name.toLowerCase())) {
+        throw createCalculatorError(`'$${name}' is not a recognised variable — use $area, $length, $x, or $y`, { line: startLine, column: startCol });
       }
-      if (source[index] !== "]") {
-        throw createCalculatorError("Unterminated bracket field reference.", { line: startLine, column: startColumn });
-      }
-      advance();
-      pushToken("FIELD", value.trim(), startLine, startColumn);
+      pushToken("DOLLAR_VAR", `$${name.toLowerCase()}`, startLine, startCol);
       continue;
     }
 
-    if (char === "@") {
-      const startLine = line;
-      const startColumn = column;
-      advance();
-      const name = readWhile((current) => /[A-Za-z0-9_]/.test(current));
-      if (!name) {
-        throw createCalculatorError("Expected variable name after @.", { line: startLine, column: startColumn });
-      }
-      pushToken("VARIABLE", `@${name}`, startLine, startColumn);
-      continue;
-    }
-
+    // Numbers
     if (/[0-9]/.test(char) || (char === "." && /[0-9]/.test(next))) {
-      const startLine = line;
-      const startColumn = column;
-      let value = readWhile((current) => /[0-9]/.test(current));
-      if (source[index] === ".") {
-        value += ".";
-        advance();
-        value += readWhile((current) => /[0-9]/.test(current));
-      }
-      pushToken("NUMBER", Number.parseFloat(value), startLine, startColumn);
+      const startLine = line, startCol = column;
+      let value = readWhile((c) => /[0-9]/.test(c));
+      if (source[index] === ".") { value += "."; advance(); value += readWhile((c) => /[0-9]/.test(c)); }
+      pushToken("NUMBER", Number.parseFloat(value), startLine, startCol);
       continue;
     }
 
+    // Identifiers and keywords
     if (/[A-Za-z_]/.test(char)) {
-      const startLine = line;
-      const startColumn = column;
-      const value = readWhile((current) => /[A-Za-z0-9_]/.test(current));
-      const upperValue = value.toUpperCase();
-      pushToken(keywords.has(upperValue) ? "KEYWORD" : "IDENT", keywords.has(upperValue) ? upperValue : value, startLine, startColumn);
+      const startLine = line, startCol = column;
+      const value = readWhile((c) => /[A-Za-z0-9_]/.test(c));
+      const upper = value.toUpperCase();
+      pushToken(KEYWORDS.has(upper) ? "KEYWORD" : "IDENT", KEYWORDS.has(upper) ? upper : value, startLine, startCol);
       continue;
     }
 
-    const twoCharOperator = `${char}${next}`;
-    if (["||", "!=", "<=", ">=", ":=", "==", "<>"].includes(twoCharOperator)) {
-      pushToken("OP", twoCharOperator);
-      advance(2);
-      continue;
+    // Two-character operators
+    const twoChar = `${char}${next}`;
+    if (["||", "!=", "<=", ">=", ":=", "==", "<>"].includes(twoChar)) {
+      pushToken("OP", twoChar); advance(2); continue;
     }
 
+    // Single-character operators and punctuation
     if ("+-*/%^=<>(),".includes(char)) {
       pushToken(char === "(" || char === ")" || char === "," ? "PUNC" : "OP", char);
-      advance();
-      continue;
+      advance(); continue;
     }
 
-    throw createCalculatorError(`Unexpected character "${char}".`, { line, column });
+    throw createCalculatorError(`Unexpected character '${char}'`, { line, column });
   }
 
   pushToken("EOF", "", line, column);

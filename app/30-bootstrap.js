@@ -15,8 +15,20 @@ document.addEventListener("dragenter", (event) => {
 });
 
 document.addEventListener("click", (event) => {
-  if (event.target.closest(".layer-context-menu") || event.target.closest(".layer-card")) {
+  // Never close when clicking inside the menu itself
+  if (event.target.closest(".layer-context-menu")) {
     return;
+  }
+
+  // If the click is on a layer card, only skip closing when it belongs to the
+  // card that currently owns the open context menu — clicking any *other* card
+  // (or anywhere else) should dismiss the menu as expected.
+  const clickedCard = event.target.closest(".layer-card");
+  if (clickedCard && layerContextMenuElement && !layerContextMenuElement.hidden) {
+    const menuLayerId = layerContextMenuElement.dataset.layerId;
+    if (clickedCard.dataset.layerId === menuLayerId) {
+      return;
+    }
   }
 
   closeLayerContextMenu();
@@ -126,6 +138,7 @@ closeFieldModalBtn.addEventListener("click", closeFieldModal);
 openCalculatorModalBtn.addEventListener("click", openCalculatorModal);
 closeCalculatorModalBtn.addEventListener("click", closeCalculatorModal);
 toggleAttributeTableBtn.addEventListener("click", toggleAttributeTableVisibility);
+wireLayerRenameHandlers();
 if (tableEditStatusBtn) {
   tableEditStatusBtn.addEventListener("click", () => {
     const tableLayerId = selectedTableLayerId || activeEditableLayerId;
@@ -173,7 +186,11 @@ if (tableRedoBtn) {
 }
 calculatorFieldSearch.addEventListener("input", renderCalculatorFieldList);
 calculatorFunctionSearch.addEventListener("input", renderCalculatorFunctionList);
-calculatorExpression.addEventListener("input", updateCalculatorPreview);
+calculatorExpression.addEventListener("input", scheduleCalculatorPreview);
+calculatorExpression.addEventListener("scroll", () => {
+  const hl = document.getElementById("calculator-expression-highlight");
+  if (hl) { hl.scrollTop = calculatorExpression.scrollTop; hl.scrollLeft = calculatorExpression.scrollLeft; }
+});
 calculatorPreviewFeature.addEventListener("change", updateCalculatorPreview);
 calculatorPreviewBtn.addEventListener("click", updateCalculatorPreview);
 calculatorApplyBtn.addEventListener("click", applyCalculatorToLayer);
@@ -185,6 +202,16 @@ calculatorImportExpressionsBtn.addEventListener("click", () => calculatorImportF
 calculatorImportFile.addEventListener("change", importSavedCalculatorExpressions);
 calculatorModeInputs.forEach((input) => {
   input.addEventListener("change", renderCalculatorTargetControls);
+});
+// ⋯ more menu toggle
+document.getElementById("calculator-more-btn")?.addEventListener("click", (event) => {
+  event.stopPropagation();
+  const menu = document.getElementById("calculator-more-menu");
+  if (menu) menu.hidden = !menu.hidden;
+});
+document.addEventListener("click", () => {
+  const menu = document.getElementById("calculator-more-menu");
+  if (menu) menu.hidden = true;
 });
 
 closeSymbologyModalBtn.addEventListener("click", closeSymbologyModal);
@@ -344,10 +371,196 @@ themeCycleBtn.addEventListener("click", () => {
   applyTheme(nextTheme);
 });
 
-const basemapSwitcherBtn = document.getElementById("basemap-switcher-btn");
-basemapSwitcherBtn.addEventListener("click", () => {
-  cycleBasemap();
-});
+// ── Basemap picker ────────────────────────────────────────────────────────────
+(function () {
+  const picker      = document.getElementById("basemap-picker");
+  const triggerBtn  = document.getElementById("basemap-switcher-btn");
+  const dropdown    = document.getElementById("basemap-dropdown");
+  const options     = dropdown.querySelectorAll(".bm-option");
+  let closeTimer    = null;
+  let previewsDrawn = false;
+
+  function openPicker() {
+    clearTimeout(closeTimer);
+    dropdown.hidden = false;
+    triggerBtn.setAttribute("aria-expanded", "true");
+    syncSelected();
+    if (!previewsDrawn) { drawPreviews(); previewsDrawn = true; }
+  }
+
+  function closePicker() {
+    dropdown.hidden = true;
+    triggerBtn.setAttribute("aria-expanded", "false");
+  }
+
+  picker.addEventListener("mouseenter", openPicker);
+  picker.addEventListener("mouseleave", () => {
+    closeTimer = setTimeout(closePicker, 220);
+  });
+
+  // Keyboard: Escape closes
+  dropdown.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") { closePicker(); triggerBtn.focus(); }
+  });
+
+  function syncSelected() {
+    options.forEach((opt) => {
+      const isActive = opt.dataset.basemap === activeBasemap;
+      opt.setAttribute("aria-selected", String(isActive));
+    });
+  }
+
+  options.forEach((opt) => {
+    opt.addEventListener("click", () => {
+      selectBasemap(opt.dataset.basemap);
+      syncSelected();
+      // redraw previews next open so they reflect new map centre
+      previewsDrawn = false;
+      closePicker();
+    });
+  });
+
+  // ── Tile preview drawing ──────────────────────────────────────────────────
+  function latLngToTile(lat, lng, zoom) {
+    const n = Math.pow(2, zoom);
+    const x = Math.floor(((lng + 180) / 360) * n);
+    const latRad = (lat * Math.PI) / 180;
+    const y = Math.floor(((1 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) / 2) * n);
+    return { x, y, z: zoom };
+  }
+
+  function drawPreviews() {
+    const centre = map.getCenter();
+    const zoom   = Math.min(Math.max(Math.round(map.getZoom()), 3), 10);
+    const tile   = latLngToTile(centre.lat, centre.lng, zoom);
+
+    document.querySelectorAll(".bm-canvas").forEach((canvas) => {
+      const id       = canvas.dataset.basemap;
+      const template = basemapTileTemplates[id];
+      if (!template) return;
+
+      const url = template.url
+        .replace("{z}", tile.z)
+        .replace("{x}", tile.x)
+        .replace("{y}", tile.y);
+
+      const img = new Image();
+      img.crossOrigin = "anonymous";
+      img.onload = () => {
+        const ctx = canvas.getContext("2d");
+        // Draw the 256px tile scaled and centred into the 88px canvas
+        ctx.drawImage(img, 0, 0, 88, 88);
+      };
+      img.onerror = () => {
+        // Fallback: draw a simple placeholder so it never shows blank
+        const ctx = canvas.getContext("2d");
+        ctx.fillStyle = id === "dark" ? "#111" : id === "satellite" ? "#1a2a1a" : "#e8e8e0";
+        ctx.fillRect(0, 0, 88, 88);
+      };
+      img.src = url;
+    });
+  }
+}());
+
+// ── Global DEM (Terrarium) toggle ─────────────────────────────────────────────
+(function () {
+  const TERRARIUM_URL = "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png";
+  const DEM_LAYER_ID  = "terrarium-global-dem";
+  const DEM_LAYER_NAME = "Global DEM (Terrarium ~30 m)";
+
+  let terrariumLayerRecord = null;
+
+  function _syncBtn(active) {
+    if (!demToggleBtn) return;
+    demToggleBtn.setAttribute("aria-pressed", String(active));
+    demToggleBtn.classList.toggle("is-active", active);
+  }
+
+  function addTerrariumLayer() {
+    // Don't add twice
+    if (loadedLayers.find((lr) => lr.id === DEM_LAYER_ID)) return;
+
+    const tileLayer = L.tileLayer(TERRARIUM_URL, {
+      attribution: "Terrain Tiles — Mapzen / AWS Open Data",
+      maxZoom: 14,
+      opacity: 1,
+      className: "terrarium-tile-layer",
+    });
+
+    const layerGroup = L.featureGroup([tileLayer]);
+
+    terrariumLayerRecord = {
+      id: DEM_LAYER_ID,
+      kind: "raster",
+      rasterKind: "terrarium",
+      name: DEM_LAYER_NAME,
+      sourceType: "Terrarium PNG Tiles",
+      color: "#60a0d8",
+      isVisible: true,
+      geojson: { type: "FeatureCollection", features: [] },
+      fields: [],
+      styleConfig: createDefaultStyleConfig("#60a0d8"),
+      labelConfig: createDefaultLabelConfig(),
+      interpolationConfig: null,
+      heatmapConfig: null,
+      filterConfig: createDefaultFilterConfig(),
+      interpolationOverlay: null,
+      interpolationObjectUrl: "",
+      layerGroup,
+      rasterTileLayer: tileLayer,
+      rasterMetadata: {
+        methodLabel: "Global Elevation",
+        sourceLayerName: "Terrarium AWS",
+        minValue: null,
+        maxValue: null,
+        width: null,
+        height: null,
+        bandCount: 3,
+        crs: "EPSG:3857",
+      },
+      featureCount: 1,
+      visibleFeatureCount: 1,
+      isDerived: false,
+      layerOpacity: 1,
+      // Called by removeLayer() in 10-analysis-layers.js when deleted via context menu
+      onRemove() {
+        terrariumLayerRecord = null;
+        _syncBtn(false);
+      },
+    };
+
+    // Push to end → sits below analysis layers in z-order
+    loadedLayers.push(terrariumLayerRecord);
+    layerGroup.addTo(map);
+
+    if (typeof renderLayerList          === "function") renderLayerList();
+    if (typeof renderEditableLayerOptions === "function") renderEditableLayerOptions();
+    if (typeof onProjectDirty           === "function") onProjectDirty();
+
+    _syncBtn(true);
+  }
+
+  function removeTerrariumLayer() {
+    if (!terrariumLayerRecord) return;
+    const idx = loadedLayers.indexOf(terrariumLayerRecord);
+    if (idx !== -1) loadedLayers.splice(idx, 1);
+    map.removeLayer(terrariumLayerRecord.layerGroup);
+    terrariumLayerRecord.onRemove();          // clears ref + button state
+    terrariumLayerRecord = null;
+
+    if (typeof renderLayerList          === "function") renderLayerList();
+    if (typeof renderEditableLayerOptions === "function") renderEditableLayerOptions();
+    if (typeof onProjectDirty           === "function") onProjectDirty();
+  }
+
+  demToggleBtn.addEventListener("click", () => {
+    if (terrariumLayerRecord) {
+      removeTerrariumLayer();
+    } else {
+      addTerrariumLayer();
+    }
+  });
+}());
 
 systemThemeMedia.addEventListener("change", () => {
   if (getStoredThemePreference() === "system") {

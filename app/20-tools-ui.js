@@ -1216,6 +1216,15 @@ function renderAttributeTable() {
   // Update layer label
   if (tableLayerLabel) {
     tableLayerLabel.textContent = tableLayer ? tableLayer.name : "";
+    tableLayerLabel.hidden = false;
+  }
+  if (tableLayerRenameBtn) {
+    tableLayerRenameBtn.hidden = !tableLayer;
+  }
+  if (tableLayerRenameInput && !tableLayerRenameInput.hidden) {
+    // Cancel any in-progress rename when layer changes
+    tableLayerRenameInput.hidden = true;
+    if (tableLayerRenameBtn) tableLayerRenameBtn.hidden = !tableLayer;
   }
 
   if (!tableLayer) {
@@ -1358,6 +1367,92 @@ function renderAttributeTable() {
   });
 }
 
+
+// ─── Inline Layer Rename ──────────────────────────────────────────────────────
+
+function startLayerRename() {
+  const tableLayerId = selectedTableLayerId || activeEditableLayerId;
+  if (!tableLayerId) return;
+  const layerRecord = loadedLayers.find((lr) => lr.id === tableLayerId && isVectorLayerRecord(lr));
+  if (!layerRecord) return;
+  if (!tableLayerLabel || !tableLayerRenameInput || !tableLayerRenameBtn) return;
+
+  tableLayerRenameInput.value = layerRecord.name;
+  tableLayerLabel.hidden = true;
+  tableLayerRenameBtn.hidden = true;
+  tableLayerRenameInput.hidden = false;
+  tableLayerRenameInput.focus();
+  tableLayerRenameInput.select();
+
+  // Auto-size to content
+  tableLayerRenameInput.style.width =
+    Math.min(Math.max(layerRecord.name.length * 8 + 24, 80), 260) + "px";
+}
+
+async function commitLayerRename(layerRecord, newName) {
+  newName = newName.trim();
+
+  // Reveal label, hide input regardless
+  if (tableLayerLabel) tableLayerLabel.hidden = false;
+  if (tableLayerRenameBtn) tableLayerRenameBtn.hidden = false;
+  if (tableLayerRenameInput) tableLayerRenameInput.hidden = true;
+
+  if (!newName) {
+    // Shake the label briefly to signal rejection
+    if (tableLayerLabel) {
+      tableLayerLabel.classList.add("rename-shake");
+      setTimeout(() => tableLayerLabel.classList.remove("rename-shake"), 400);
+    }
+    return;
+  }
+  if (newName === layerRecord.name) return;
+
+  const oldFileName = buildLayerFileName(layerRecord);
+  layerRecord.name = newName;
+
+  if (tableLayerLabel) tableLayerLabel.textContent = newName;
+  renderLayerList();
+
+  if (isAutoSaveAvailable()) {
+    await renameLayerFile(layerRecord, oldFileName);
+  } else {
+    if (typeof onProjectDirty === "function") onProjectDirty();
+    updateStatus("Layer renamed — save project to persist");
+  }
+}
+
+function wireLayerRenameHandlers() {
+  if (!tableLayerRenameBtn || !tableLayerRenameInput) return;
+
+  tableLayerRenameBtn.addEventListener("click", () => startLayerRename());
+  tableLayerLabel && tableLayerLabel.addEventListener("dblclick", () => startLayerRename());
+
+  tableLayerRenameInput.addEventListener("keydown", (e) => {
+    const tableLayerId = selectedTableLayerId || activeEditableLayerId;
+    const layerRecord = tableLayerId
+      ? loadedLayers.find((lr) => lr.id === tableLayerId && isVectorLayerRecord(lr))
+      : null;
+    if (e.key === "Enter") {
+      e.preventDefault();
+      if (layerRecord) commitLayerRename(layerRecord, tableLayerRenameInput.value);
+    } else if (e.key === "Escape") {
+      // Revert
+      if (tableLayerLabel) tableLayerLabel.hidden = false;
+      if (tableLayerRenameBtn) tableLayerRenameBtn.hidden = false;
+      tableLayerRenameInput.hidden = true;
+    }
+  });
+
+  tableLayerRenameInput.addEventListener("blur", () => {
+    if (tableLayerRenameInput.hidden) return; // already handled
+    const tableLayerId = selectedTableLayerId || activeEditableLayerId;
+    const layerRecord = tableLayerId
+      ? loadedLayers.find((lr) => lr.id === tableLayerId && isVectorLayerRecord(lr))
+      : null;
+    if (layerRecord) commitLayerRename(layerRecord, tableLayerRenameInput.value);
+  });
+}
+
 function getActiveCalculatorMode() {
   return Array.from(calculatorModeInputs).find((input) => input.checked)?.value || "create";
 }
@@ -1410,7 +1505,7 @@ function renderCalculatorFieldList() {
   calculatorFieldList.innerHTML = filtered
     .map(
       (field) =>
-        `<button class="calculator-chip" type="button" data-insert="[${escapeHtml(field)}]" title="${escapeHtml(field)}">${escapeHtml(field)}</button>`
+        `<button class="calculator-chip" type="button" data-insert='"${escapeHtml(field)}"' title="${escapeHtml(field)}">${escapeHtml(field)}</button>`
     )
     .join("");
 
@@ -1420,24 +1515,25 @@ function renderCalculatorFieldList() {
 }
 
 function renderCalculatorVariableList() {
-  const variables = getCalculatorVariableCatalog();
-  if (!variables.length) {
-    calculatorVariableList.innerHTML = '<div class="calculator-empty">No variables available.</div>';
+  const geoVars = Array.isArray(window.calculatorExpressionCatalog?.geoVars)
+    ? window.calculatorExpressionCatalog.geoVars : [];
+
+  if (!geoVars.length) {
+    calculatorVariableList.innerHTML = '<div class="calculator-empty">No geometry variables available.</div>';
     return;
   }
 
-  calculatorVariableList.innerHTML = variables
-    .map(
-      (item) => `
-        <button
-          class="calculator-chip"
-          type="button"
-          data-insert="${escapeHtml(item.insert)}"
-        >
-          ${escapeHtml(item.label)}
-        </button>
-      `
-    )
+  calculatorVariableList.innerHTML = geoVars
+    .map((item) => `
+      <button
+        class="calculator-chip calc2-geo-chip"
+        type="button"
+        data-insert="${escapeHtml(item.insert)}"
+      >
+        <span class="calc2-chip-label">${escapeHtml(item.label)}</span>
+        <span class="calc2-chip-desc">${escapeHtml(item.description)}</span>
+      </button>
+    `)
     .join("");
 
   calculatorVariableList.querySelectorAll("[data-insert]").forEach((button) => {
@@ -1451,9 +1547,7 @@ function renderCalculatorFunctionList() {
     .map((group) => ({
       ...group,
       items: (group.items || []).filter((item) => {
-        if (!query) {
-          return true;
-        }
+        if (!query) return true;
         const haystack = [group.name, item.label, item.description, ...(item.keywords || [])].join(" ").toLowerCase();
         return haystack.includes(query);
       }),
@@ -1477,8 +1571,12 @@ function renderCalculatorFunctionList() {
                   class="calculator-function-item"
                   type="button"
                   data-insert="${escapeHtml(item.insert)}"
+                  data-example="${escapeHtml(item.example || "")}"
+                  title="${escapeHtml(item.description)}"
                 >
-                  ${escapeHtml(item.label)}
+                  <span class="calc2-fn-name">${escapeHtml(item.label)}</span>
+                  <span class="calc2-fn-desc">${escapeHtml(item.description)}</span>
+                  ${item.example ? `<span class="calc2-fn-example">${escapeHtml(item.example)}</span>` : ""}
                 </button>
               `
             )
@@ -1513,14 +1611,99 @@ function renderCalculatorTargetControls() {
   }
 }
 
+// ── Syntax highlighting ──────────────────────────────────────────────────────
+
+const CALC_HL_KEYWORDS = /\b(CASE|WHEN|THEN|ELSE|END|AND|OR|NOT|IS|NULL|TRUE|FALSE)\b/g;
+const CALC_HL_DOLLAR   = /(\$(?:area|length|x|y))\b/gi;
+const CALC_HL_STRING   = /('(?:''|[^'])*')/g;
+const CALC_HL_FIELD    = /("(?:""|[^"])*")/g;
+const CALC_HL_NUMBER   = /\b(\d+(?:\.\d+)?)\b/g;
+const CALC_HL_FUNC     = /\b([a-z_][a-z0-9_]*)\s*(?=\()/gi;
+const CALC_HL_COMMENT  = /(--[^\n]*)/g;
+
+function highlightCalculatorExpression(raw) {
+  // Escape HTML first — work on the escaped string for spans
+  const esc = raw
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+
+  // We tokenise manually to avoid overlapping replacements:
+  // strings and fields must be protected first.
+  const parts = [];
+  let remaining = esc;
+
+  // Helper: split on first regex match, push [before, match, ...], recurse
+  const tokenize = (str, patterns) => {
+    if (!str) return "";
+    for (const [re, cls] of patterns) {
+      re.lastIndex = 0;
+      const m = re.exec(str);
+      if (m) {
+        const before = str.slice(0, m.index);
+        const after  = str.slice(m.index + m[0].length);
+        const inner  = tokenize(before, patterns);
+        return inner + `<span class="${cls}">${m[0]}</span>` + tokenize(after, patterns);
+      }
+    }
+    return str;
+  };
+
+  // Order matters: strings & fields are literal — color them first, protect from further matching
+  // Simple pass: replace from left to right without overlap
+  let result = esc;
+
+  // 1. Comments
+  result = result.replace(/--[^\n]*/g, (m) => `<span class="calc-hl-comment">${m}</span>`);
+
+  // Protect already-wrapped spans from further replacement by using a placeholder approach
+  // Simpler: just do sequential safe replacements on non-overlapping token classes
+  result = result.replace(/'(?:''|[^'])*'/g, (m) => `<span class="calc-hl-string">${m}</span>`);
+  result = result.replace(/"(?:""|[^"])*"/g, (m) => `<span class="calc-hl-field">${m}</span>`);
+  result = result.replace(/\$(?:area|length|x|y)\b/gi, (m) => `<span class="calc-hl-var">${m}</span>`);
+  result = result.replace(/\b(CASE|WHEN|THEN|ELSE|END|AND|OR|NOT|IS|NULL|TRUE|FALSE)\b/g, (m) => `<span class="calc-hl-keyword">${m}</span>`);
+  result = result.replace(/\b([a-z_][a-z0-9_]*)\s*(?=\()/gi, (m, fn) => `<span class="calc-hl-func">${fn}</span>(`);
+  result = result.replace(/\b(\d+(?:\.\d+)?)\b/g, (m) => `<span class="calc-hl-number">${m}</span>`);
+
+  return result;
+}
+
+let _calcHighlightEl = null;
+function getCalculatorHighlightEl() {
+  if (!_calcHighlightEl) _calcHighlightEl = document.getElementById("calculator-expression-highlight");
+  return _calcHighlightEl;
+}
+
+function syncCalculatorHighlight() {
+  const el = getCalculatorHighlightEl();
+  if (!el) return;
+  const raw = calculatorExpression.value;
+  el.innerHTML = highlightCalculatorExpression(raw) + "\n"; // trailing \n keeps last line visible
+  // Sync scroll
+  el.scrollTop  = calculatorExpression.scrollTop;
+  el.scrollLeft = calculatorExpression.scrollLeft;
+}
+
+// ── Debounced live preview (300 ms) ─────────────────────────────────────────
+
+let _calcPreviewTimer = null;
+function scheduleCalculatorPreview() {
+  syncCalculatorHighlight();
+  clearTimeout(_calcPreviewTimer);
+  _calcPreviewTimer = setTimeout(updateCalculatorPreview, 300);
+}
+
+// ── Insert helper ────────────────────────────────────────────────────────────
+
 function insertCalculatorText(text) {
   const start = calculatorExpression.selectionStart ?? calculatorExpression.value.length;
-  const end = calculatorExpression.selectionEnd ?? calculatorExpression.value.length;
+  const end   = calculatorExpression.selectionEnd   ?? calculatorExpression.value.length;
   const current = calculatorExpression.value;
   calculatorExpression.value = `${current.slice(0, start)}${text}${current.slice(end)}`;
   calculatorExpression.focus();
   const cursor = start + text.length;
   calculatorExpression.setSelectionRange(cursor, cursor);
+  syncCalculatorHighlight();
   updateCalculatorPreview();
 }
 
@@ -1629,13 +1812,15 @@ function evaluateCalculatorExpression(feature, expression, options = {}) {
     });
     return { result, engine: "qgis" };
   } catch (error) {
+    // Try legacy fallback for backwards compatibility
     try {
       return {
         result: evaluateLegacyCalculatorExpression(feature, expression),
         engine: "legacy",
       };
-    } catch (legacyError) {
-      throw new Error(getFriendlyCalculatorError(expression, error?.details ? error : legacyError));
+    } catch (_legacyError) {
+      // Prefer the new engine's friendly message; it already has context
+      throw new Error(error.message || error.details || String(error));
     }
   }
 }
@@ -1917,6 +2102,7 @@ function openCalculatorModal() {
   renderSavedCalculatorExpressions();
   renderCalculatorTargetControls();
   renderCalculatorPreviewFeatureOptions();
+  syncCalculatorHighlight();
   updateCalculatorPreview();
 }
 

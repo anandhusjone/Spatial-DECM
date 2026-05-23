@@ -3,7 +3,7 @@
    Depends on globals from 00-core.js and 10-analysis-layers.js:
      map, canAnimate, anime, updateStatus, loadedLayers,
      addLayerRecord, removeLayer, isRasterLayerRecord,
-     dataURLToBlob, escapeHtml,
+     escapeHtml,
      createDefaultStyleConfig, createDefaultLabelConfig, createDefaultFilterConfig
    ============================================================= */
 
@@ -13,10 +13,6 @@
   // ── Constants ────────────────────────────────────────────────
 
   const VIEWSHED_LAYER_NAME = "Viewshed";
-  const VISIBLE_R   = 0;
-  const VISIBLE_G   = 255;
-  const VISIBLE_B   = 120;
-  const VISIBLE_A   = Math.round(0.45 * 255); // pre-multiplied for ImageData
   const EARTH_RADIUS_M = 6371000;
   const REFRACTION_K   = 0.13;
 
@@ -40,7 +36,7 @@
 
   const demSelect     = document.getElementById("vs-dem-select");
   const demSelectWrap = document.getElementById("vs-dem-select-wrap");
-  const globalDemChk  = document.getElementById("vs-global-dem");
+  const demSrcCtrl    = document.getElementById("vs-dem-source-ctrl");
   const obsHeightInp  = document.getElementById("vs-observer-height");
   const tgtHeightInp  = document.getElementById("vs-target-height");
   const maxRadiusInp  = document.getElementById("vs-max-radius");
@@ -48,6 +44,7 @@
   const curvatureChk  = document.getElementById("vs-curvature");
   const pickBtn       = document.getElementById("vs-pick-btn");
   const coordsDisplay = document.getElementById("vs-coords-display");
+  const clearObsBtn   = document.getElementById("vs-clear-obs-btn");
   const errorMsg      = document.getElementById("vs-error-msg");
   const progressEl    = document.getElementById("vs-progress");
   const progressLabel = document.getElementById("vs-progress-label");
@@ -135,11 +132,10 @@
     let dragging = false;
     let startX, startY, startLeft, startTop;
 
-    panelHeader.addEventListener("mousedown", (e) => {
-      if (e.button !== 0) return;
+    function startDrag(clientX, clientY) {
       dragging  = true;
-      startX    = e.clientX;
-      startY    = e.clientY;
+      startX    = clientX;
+      startY    = clientY;
       const rect = panel.getBoundingClientRect();
       startLeft = rect.left;
       startTop  = rect.top;
@@ -147,19 +143,44 @@
       panel.style.top    = startTop + "px";
       panel.style.right  = "auto";
       panel.style.bottom = "auto";
+    }
+
+    function moveDrag(clientX, clientY) {
+      if (!dragging) return;
+      panel.style.left = Math.max(0, startLeft + (clientX - startX)) + "px";
+      panel.style.top  = Math.max(0, startTop  + (clientY - startY)) + "px";
+    }
+
+    function endDrag() {
+      if (dragging) _justDragged = true;
+      dragging = false;
+    }
+
+    panelHeader.addEventListener("mousedown", (e) => {
+      if (e.button !== 0) return;
+      startDrag(e.clientX, e.clientY);
       e.preventDefault();
     });
 
+    panelHeader.addEventListener("touchstart", (e) => {
+      if (e.touches.length !== 1) return;
+      startDrag(e.touches[0].clientX, e.touches[0].clientY);
+      e.preventDefault();
+    }, { passive: false });
+
     document.addEventListener("mousemove", (e) => {
-      if (!dragging) return;
-      panel.style.left = Math.max(0, startLeft + (e.clientX - startX)) + "px";
-      panel.style.top  = Math.max(0, startTop  + (e.clientY - startY)) + "px";
+      moveDrag(e.clientX, e.clientY);
     });
 
-    document.addEventListener("mouseup", () => {
-      if (dragging) _justDragged = true;
-      dragging = false;
-    });
+    document.addEventListener("touchmove", (e) => {
+      if (!dragging || e.touches.length !== 1) return;
+      moveDrag(e.touches[0].clientX, e.touches[0].clientY);
+      e.preventDefault();
+    }, { passive: false });
+
+    document.addEventListener("mouseup", endDrag);
+    document.addEventListener("touchend", endDrag);
+    document.addEventListener("touchcancel", endDrag);
   })();
 
   // ── DEM selector population ───────────────────────────────────
@@ -195,170 +216,34 @@
     }).observe(layerListEl, { childList: true, subtree: false });
   }
 
-  // ── Global DEM toggle ─────────────────────────────────────────
+  // ── DEM source cards ──────────────────────────────────────────
 
-  const GLOBAL_DEM_DEFAULT_RADIUS = 10000; // metres — default when radius is 0
+  const GLOBAL_DEM_DEFAULT_RADIUS = 10000; // metres
 
-  function onGlobalDemToggle() {
-    const isGlobal = globalDemChk.checked;
-    demSelectWrap.hidden = isGlobal;
-    if (isGlobal) {
-      radiusHint.textContent = "(required — max 50 km)";
+  let vsDemSource = "local"; // "local" | "global"
+
+  demSrcCtrl.addEventListener("click", (e) => {
+    const btn = e.target.closest(".wt-dem-card");
+    if (!btn) return;
+    const src = btn.dataset.demSource;
+    if (!src || src === vsDemSource) return;
+    vsDemSource = src;
+    demSrcCtrl.querySelectorAll(".wt-dem-card")
+      .forEach(b => b.classList.toggle("is-active", b.dataset.demSource === src));
+    demSelectWrap.classList.toggle("is-open", src === "local");
+    if (src === "global") {
       if (!Number(maxRadiusInp.value)) {
         maxRadiusInp.value = GLOBAL_DEM_DEFAULT_RADIUS;
         updateRadiusCircle();
       }
-    } else {
-      radiusHint.textContent = "(0 = unlimited)";
     }
-  }
-
-  globalDemChk.addEventListener("change", onGlobalDemToggle);
+  });
 
   // ── Terrarium tile helpers ─────────────────────────────────────
-  //
-  // Elevation tiles from AWS Open Data (public, CORS-enabled, no auth):
-  //   https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png
-  //
-  // RGB encoding: elevation (m) = (R * 256 + G + B / 256) − 32768
-  // Coverage: global, ~30 m/px at zoom 12.
-
-  const TERRARIUM_URL = "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png";
-  const TILE_SIZE     = 256;
-
-  function degToRad(d) { return d * Math.PI / 180; }
-
-  function latToTileY(lat, z) {
-    const n      = Math.pow(2, z);
-    const sinLat = Math.sin(degToRad(lat));
-    return n * (0.5 - Math.log((1 + sinLat) / (1 - sinLat)) / (4 * Math.PI));
-  }
-  function lngToTileX(lng, z) {
-    return Math.pow(2, z) * (lng + 180) / 360;
-  }
-  function tileXToLng(x, z) {
-    return x / Math.pow(2, z) * 360 - 180;
-  }
-  function tileYToLat(y, z) {
-    const n = Math.PI - 2 * Math.PI * y / Math.pow(2, z);
-    return 180 / Math.PI * Math.atan(0.5 * (Math.exp(n) - Math.exp(-n)));
-  }
-
-  /** Pick zoom so the stitched raster is ~1024 px wide, capped at z=12 (~30 m/px). */
-  function chooseZoom(lat, radiusM) {
-    const targetMPP = radiusM / 512;
-    const mpp0      = 156543 * Math.cos(degToRad(lat));
-    return Math.max(2, Math.min(12, Math.round(Math.log2(mpp0 / targetMPP))));
-  }
-
-  async function fetchTileImageData(z, x, y) {
-    const url = TERRARIUM_URL.replace("{z}", z).replace("{x}", x).replace("{y}", y);
-    const img = await new Promise((resolve, reject) => {
-      const i    = new Image();
-      i.crossOrigin = "anonymous";
-      i.onload  = () => resolve(i);
-      i.onerror = () => reject(new Error(
-        `Could not load elevation tile ${z}/${x}/${y}. ` +
-        `Check your internet connection or try a smaller radius.`
-      ));
-      i.src = url;
-    });
-    const c = document.createElement("canvas");
-    c.width = c.height = TILE_SIZE;
-    c.getContext("2d").drawImage(img, 0, 0);
-    return c.getContext("2d").getImageData(0, 0, TILE_SIZE, TILE_SIZE);
-  }
-
-  /**
-   * Fetch & stitch Terrarium tiles covering the observer's analysis circle.
-   * Returns { dem, width, height, transform, cellSizeX, cellSizeY }
-   * with `transform` matching the GeoTIFF rasterTransform interface.
-   */
-  async function fetchGlobalDem(center, radiusM, onStatus) {
-    const z = chooseZoom(center.lat, radiusM);
-
-    // Bounding box in degrees
-    const latDeg = radiusM / 111320;
-    const lngDeg = radiusM / (111320 * Math.cos(degToRad(center.lat)));
-    const north  = center.lat + latDeg, south = center.lat - latDeg;
-    const west   = center.lng - lngDeg, east  = center.lng + lngDeg;
-
-    const txMin = Math.floor(lngToTileX(west,  z));
-    const txMax = Math.floor(lngToTileX(east,  z));
-    const tyMin = Math.floor(latToTileY(north, z));
-    const tyMax = Math.floor(latToTileY(south, z));
-
-    const nCols      = txMax - txMin + 1;
-    const nRows      = tyMax - tyMin + 1;
-    const totalTiles = nCols * nRows;
-
-    if (totalTiles > 64) {
-      throw new Error(
-        `Radius too large at this location: would need ${totalTiles} tiles. ` +
-        `Please reduce the radius (≤ ~50 km works well).`
-      );
-    }
-
-    if (onStatus) onStatus(`Fetching ${totalTiles} elevation tile${totalTiles !== 1 ? "s" : ""} (zoom ${z})…`);
-
-    // Fetch all tiles in parallel
-    const jobs = [];
-    for (let ry = 0; ry < nRows; ry++) {
-      for (let cx = 0; cx < nCols; cx++) {
-        jobs.push(fetchTileImageData(z, txMin + cx, tyMin + ry));
-      }
-    }
-    const tileImgData = await Promise.all(jobs);
-
-    // Stitch into one Float32Array
-    const width  = nCols * TILE_SIZE;
-    const height = nRows * TILE_SIZE;
-    const dem    = new Float32Array(width * height);
-
-    for (let ry = 0; ry < nRows; ry++) {
-      for (let cx = 0; cx < nCols; cx++) {
-        const imgd = tileImgData[ry * nCols + cx].data;
-        for (let py = 0; py < TILE_SIZE; py++) {
-          for (let px = 0; px < TILE_SIZE; px++) {
-            const si  = (py * TILE_SIZE + px) * 4;
-            const dr  = ry * TILE_SIZE + py;
-            const dc  = cx * TILE_SIZE + px;
-            dem[dr * width + dc] =
-              (imgd[si] * 256 + imgd[si + 1] + imgd[si + 2] / 256) - 32768;
-          }
-        }
-      }
-    }
-
-    // Geographic extent of the stitched raster
-    const bboxNorth = tileYToLat(tyMin,     z);
-    const bboxSouth = tileYToLat(tyMax + 1, z);
-    const bboxWest  = tileXToLng(txMin,     z);
-    const bboxEast  = tileXToLng(txMax + 1, z);
-
-    const cellW = (bboxEast  - bboxWest)  / width;   // degrees per pixel
-    const cellH = (bboxNorth - bboxSouth) / height;  // degrees per pixel (north-up)
-
-    // Build a transform object matching the GeoTIFF rasterTransform interface
-    const transform = {
-      width,
-      height,
-      extent: { minX: bboxWest, maxX: bboxEast, minY: bboxSouth, maxY: bboxNorth },
-      projectLatLngToRaster(latlng) { return [latlng.lng, latlng.lat]; },
-      rasterToPixel(x, y) {
-        return [(x - bboxWest) / cellW, (bboxNorth - y) / cellH];
-      },
-      unprojectRasterPoint(x, y) { return { lat: y, lng: x }; },
-    };
-
-    // Approximate cell sizes in metres (for the LOS distance calculation)
-    const cellSizeX = cellW * 111320 * Math.cos(degToRad(center.lat));
-    const cellSizeY = cellH * 111320;
-
-    return { dem, width, height, transform, cellSizeX, cellSizeY };
-  }
-
-
+  // Moved to app/dem-utils.js (loaded before this script).
+  // Globals available: degToRad, latToTileY, lngToTileX, tileXToLng,
+  //   tileYToLat, chooseZoom, fetchTileImageData, fetchGlobalDem,
+  //   TERRARIUM_URL, TILE_SIZE
 
   function setPicking(active) {
     isPicking = active;
@@ -413,6 +298,7 @@
 
     coordsDisplay.textContent = `${latlng.lat.toFixed(5)}, ${latlng.lng.toFixed(5)}`;
     coordsDisplay.classList.add("is-set");
+    clearObsBtn.hidden = false;
 
     if (observerMarker) map.removeLayer(observerMarker);
     observerMarker = L.circleMarker(latlng, {
@@ -436,12 +322,23 @@
 
   maxRadiusInp.addEventListener("input", updateRadiusCircle);
 
-  pickBtn.addEventListener("click", () => {
+  pickBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
     if (isPicking) {
       cancelPicking();
     } else {
       setPicking(true);
     }
+  });
+
+  clearObsBtn.addEventListener("click", () => {
+    if (isPicking) cancelPicking();
+    observerLatLng = null;
+    if (observerMarker) { map.removeLayer(observerMarker); observerMarker = null; }
+    if (radiusCircle)   { map.removeLayer(radiusCircle);   radiusCircle   = null; }
+    coordsDisplay.textContent = "Not set";
+    coordsDisplay.classList.remove("is-set");
+    clearObsBtn.hidden = true;
   });
 
   // ── Validation ────────────────────────────────────────────────
@@ -459,7 +356,7 @@
   function validate() {
     clearError();
 
-    if (!globalDemChk.checked && !demSelect.value) {
+    if (!vsDemSource === "global" && !demSelect.value) {
       showError("Please select a DEM raster layer, or enable Use Global DEM.");
       return false;
     }
@@ -482,12 +379,12 @@
       return false;
     }
 
-    if (globalDemChk.checked && !(maxR > 0)) {
+    if (vsDemSource === "global" && !(maxR > 0)) {
       showError("A radius is required when using the Global DEM (try 5000–20000 m).");
       return false;
     }
 
-    if (globalDemChk.checked && maxR > 50000) {
+    if (vsDemSource === "global" && maxR > 50000) {
       showError("Radius is limited to 50 000 m with the Global DEM to avoid fetching too many tiles.");
       return false;
     }
@@ -503,15 +400,25 @@
   // ── Progress UI ───────────────────────────────────────────────
 
   function showProgress() {
-    progressEl.hidden  = false;
-    applyBtn.disabled  = true;
-    isComputing        = true;
+    progressEl.hidden = false;
+    progressLabel.textContent = "Computing viewshed…";
+    applyBtn.disabled = true;
+    isComputing       = true;
+    // Trigger fade-in on next frame so the transition fires after display change
+    requestAnimationFrame(() => progressEl.classList.add("is-visible"));
   }
 
+  let _hideTimer = null;
   function hideProgress() {
-    progressEl.hidden  = true;
-    applyBtn.disabled  = false;
-    isComputing        = false;
+    clearTimeout(_hideTimer);
+    applyBtn.disabled = false;
+    isComputing       = false;
+    progressEl.classList.remove("is-visible");
+    // Wait for the fade-out to finish before setting hidden
+    _hideTimer = setTimeout(() => {
+      progressEl.hidden = true;
+      progressLabel.textContent = "Computing viewshed…";
+    }, 300);
   }
 
   // ── Viewshed algorithm ────────────────────────────────────────
@@ -555,6 +462,10 @@
     }
 
     function traceLine(r1, c1) {
+      // Guard: skip degenerate ray (observer → itself), which would infinite-loop
+      // because Bresenham makes no progress when dr===0 && dc===0.
+      if (r1 === r0 && c1 === c0) return;
+
       let r = r0, c = c0;
       const dr = Math.abs(r1 - r0);
       const dc = Math.abs(c1 - c0);
@@ -583,7 +494,7 @@
 
         // Earth curvature + atmospheric refraction correction (drop in metres)
         const curv  = curvature ? (dist * dist / (2 * EARTH_RADIUS_M)) * (1 - REFRACTION_K) : 0;
-        // terrainAngle: bare terrain angle from observer -- blocks LOS for
+        // terrainAngle: bare terrain angle from observer — blocks LOS for
         // cells further along the ray. maxAngle tracks this, not tgtH.
         const terrainAngle = (elev - curv - observerElev) / dist;
 
@@ -591,11 +502,7 @@
         // cell. Visible when this clears the current horizon.
         const visAngle = (elev + tgtH - curv - observerElev) / dist;
 
-        if (visAngle >= maxAngle) {
-          result[idx] = 1;
-        } else {
-          result[idx] = 0;
-        }
+        result[idx] = (visAngle >= maxAngle) ? 1 : 0;
         if (terrainAngle > maxAngle) maxAngle = terrainAngle;
 
         if (r === r1 && c === c1) break;
@@ -609,28 +516,148 @@
     return result;
   }
 
-  // ── Canvas painting ───────────────────────────────────────────
+  // ── Visibility → GeoJSON polygon tracing ─────────────────────
 
-  function paintViewshedToCanvas(visibility, width, height) {
-    const canvas  = document.createElement("canvas");
-    canvas.width  = width;
-    canvas.height = height;
-    const ctx  = canvas.getContext("2d");
-    const imgd = ctx.createImageData(width, height);
-    const buf  = imgd.data;
+  /**
+   * Trace the boundary of all visible (value=1) cells in the visibility
+   * grid and return a dissolved GeoJSON MultiPolygon in geographic
+   * coordinates (lng, lat).
+   *
+   * Uses the same half-edge approach as the watershed basin tracer:
+   * for every visible cell, emit an edge for each side that borders a
+   * non-visible (or out-of-bounds) cell.  Then walk the half-edge graph
+   * to close rings, classify exterior / hole rings by signed area, and
+   * assemble a MultiPolygon.
+   *
+   * @param {Uint8Array} visibility  flat row-major grid, 1 = visible
+   * @param {number}     W           grid width  (columns)
+   * @param {number}     H           grid height (rows)
+   * @param {object}     transform   raster transform with .extent and
+   *                                 .unprojectRasterPoint(x,y)
+   * @returns {{ type: "MultiPolygon", coordinates: Array }}
+   */
+  function visibilityToMultiPolygon(visibility, W, H, transform) {
+    const ext    = transform.extent;
+    const cw     = (ext.maxX - ext.minX) / W;
+    const ch     = (ext.maxY - ext.minY) / H;
+    const stride = W + 1;  // grid of corner nodes is (W+1) × (H+1)
 
-    for (let i = 0, pi = 0; i < visibility.length; i++, pi += 4) {
-      if (visibility[i]) {
-        buf[pi]     = VISIBLE_R;
-        buf[pi + 1] = VISIBLE_G;
-        buf[pi + 2] = VISIBLE_B;
-        buf[pi + 3] = VISIBLE_A;
-      }
-      // else alpha stays 0 (transparent) — no-write is faster
+    /** Convert a corner node (col, row) in node-space to [lng, lat]. */
+    function project(col, row) {
+      const pt = transform.unprojectRasterPoint(
+        ext.minX + col * cw,
+        ext.maxY - row * ch
+      );
+      return [pt.lng, pt.lat];
     }
 
-    ctx.putImageData(imgd, 0, 0);
-    return canvas;
+    function nodeKey(col, row) { return row * stride + col; }
+
+    function isVisible(r, c) {
+      if (r < 0 || r >= H || c < 0 || c >= W) return false;
+      return visibility[r * W + c] === 1;
+    }
+
+    // Build directed half-edge adjacency: for each boundary segment,
+    // store a directed edge from start-node → end-node such that the
+    // visible cell is on the LEFT when walking from start to end.
+    const edgeMap = new Map();  // nodeKey(start) → [nodeKey(end), ...]
+
+    function addEdge(c1, r1, c2, r2) {
+      const k = nodeKey(c1, r1);
+      const v = nodeKey(c2, r2);
+      const arr = edgeMap.get(k);
+      if (arr === undefined) edgeMap.set(k, [v]);
+      else arr.push(v);
+    }
+
+    for (let r = 0; r < H; r++) {
+      for (let c = 0; c < W; c++) {
+        if (!isVisible(r, c)) continue;
+        // Top edge (r,c)→(r): visible cell on left = walk left→right
+        if (!isVisible(r - 1, c)) addEdge(c,     r,     c + 1, r);
+        // Right edge: walk top→bottom
+        if (!isVisible(r, c + 1)) addEdge(c + 1, r,     c + 1, r + 1);
+        // Bottom edge: walk right→left
+        if (!isVisible(r + 1, c)) addEdge(c + 1, r + 1, c,     r + 1);
+        // Left edge: walk bottom→top
+        if (!isVisible(r, c - 1)) addEdge(c,     r + 1, c,     r);
+      }
+    }
+
+    // Walk the half-edge graph to close rings.
+    function simplifyCollinear(ring) {
+      if (ring.length <= 4) return ring;
+      const out = [ring[0]];
+      for (let i = 1; i < ring.length - 1; i++) {
+        const [px, py] = ring[i - 1], [cx, cy] = ring[i], [nx, ny] = ring[i + 1];
+        if (!((px === cx && cx === nx) || (py === cy && cy === ny))) out.push(ring[i]);
+      }
+      out.push(ring[ring.length - 1]);
+      return out;
+    }
+
+    function signedArea2(ring) {
+      let a = 0;
+      for (let i = 0, n = ring.length - 1; i < n; i++)
+        a += ring[i][0] * ring[i + 1][1] - ring[i + 1][0] * ring[i][1];
+      return a;
+    }
+
+    function pointInRing(pt, ring) {
+      const [px, py] = pt;
+      let inside = false;
+      for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+        const [xi, yi] = ring[i], [xj, yj] = ring[j];
+        if ((yi > py) !== (yj > py) && px < (xj - xi) * (py - yi) / (yj - yi) + xi)
+          inside = !inside;
+      }
+      return inside;
+    }
+
+    const rings = [];
+    for (const [startKey, targets] of edgeMap) {
+      while (targets.length > 0) {
+        const ring = [];
+        let curKey = startKey;
+        const maxSteps = edgeMap.size + 4;
+        for (let step = 0; step < maxSteps; step++) {
+          const col = curKey % stride;
+          const row = (curKey / stride) | 0;
+          ring.push(project(col, row));
+          const nexts = edgeMap.get(curKey);
+          if (!nexts || nexts.length === 0) break;
+          const nextKey = nexts.shift();
+          if (nextKey === startKey) { ring.push(ring[0]); break; }
+          curKey = nextKey;
+        }
+        if (ring.length >= 4) rings.push(simplifyCollinear(ring));
+      }
+    }
+
+    if (!rings.length) {
+      return { type: "MultiPolygon", coordinates: [] };
+    }
+
+    // Classify rings: exterior = CW in screen space (negative shoelace in
+    // geographic lng/lat because Y increases northward → sign flips).
+    const exteriors = rings.filter((r) => signedArea2(r) < 0);
+    const holes     = rings.filter((r) => signedArea2(r) >= 0);
+
+    if (!exteriors.length) {
+      // Fallback: treat all rings as exteriors (degenerate case)
+      return {
+        type: "MultiPolygon",
+        coordinates: rings.map((r) => [r]),
+      };
+    }
+
+    const polygons = exteriors.map((ext) => [
+      ext,
+      ...holes.filter((h) => pointInRing(h[0], ext)),
+    ]);
+
+    return { type: "MultiPolygon", coordinates: polygons };
   }
 
   // ── Layer management ──────────────────────────────────────────
@@ -646,6 +673,129 @@
       removeLayer(existing.id);
       _replacingViewshed = false;
     }
+  }
+
+  /**
+   * Build a vector layer record for the viewshed result.
+   *
+   * The GeoJSON FeatureCollection contains exactly two features:
+   *   [0] MultiPolygon — the dissolved visible area
+   *   [1] Point        — the observer location
+   *
+   * Leaflet renders polygons in overlayPane and point markers in
+   * markerPane (which sits above overlayPane), so the observer point
+   * is always drawn on top of the viewshed polygon without any extra
+   * z-index juggling.
+   */
+  function buildViewshedLayerRecord(multiPolygon, obsLatLng) {
+    const VIEWSHED_COLOR   = "#00ff78";
+    const OBSERVER_COLOR   = "#ffffff";
+
+    const geojson = {
+      type: "FeatureCollection",
+      features: [
+        {
+          type: "Feature",
+          properties: { type: "viewshed_area", label: "Visible area" },
+          geometry: multiPolygon,
+        },
+        {
+          type: "Feature",
+          properties: {
+            type:  "observer",
+            label: "Observer",
+            lat:   obsLatLng.lat,
+            lng:   obsLatLng.lng,
+          },
+          geometry: {
+            type:        "Point",
+            coordinates: [obsLatLng.lng, obsLatLng.lat],
+          },
+        },
+      ],
+    };
+
+    // Style config: polygon fill + stroke in viewshed green;
+    // point rendered as a contrasting marker.
+    const styleConfig = createDefaultStyleConfig(VIEWSHED_COLOR);
+    styleConfig.fillOpacity   = 0.45;
+    styleConfig.strokeOpacity = 0.8;
+    styleConfig.strokeWidth   = 1.5;
+
+    const color = VIEWSHED_COLOR;
+    const layerGroup = L.featureGroup();
+
+    // Render polygon feature via L.geoJSON with custom styling.
+    const polygonLayer = L.geoJSON(geojson.features[0], {
+      style: () => ({
+        color:       VIEWSHED_COLOR,
+        fillColor:   VIEWSHED_COLOR,
+        fillOpacity: 0.45,
+        opacity:     0.8,
+        weight:      1.5,
+        pane:        "overlayPane",
+      }),
+    });
+    polygonLayer.feature = geojson.features[0];
+    layerGroup.addLayer(polygonLayer);
+
+    // Render observer point as a circle marker, explicitly in markerPane
+    // so it always renders above the polygon overlay.
+    const obsMarker = L.circleMarker([obsLatLng.lat, obsLatLng.lng], {
+      radius:      7,
+      color:       OBSERVER_COLOR,
+      fillColor:   VIEWSHED_COLOR,
+      fillOpacity: 1,
+      weight:      2.5,
+      pane:        "markerPane",
+      interactive: true,
+    });
+    obsMarker.bindTooltip("Observer", {
+      permanent:  false,
+      direction:  "top",
+      offset:     [0, -8],
+      className:  "measure-tooltip",
+    });
+    obsMarker.bindPopup(
+      `<strong>Observer</strong><br>Lat: ${obsLatLng.lat.toFixed(5)}<br>Lng: ${obsLatLng.lng.toFixed(5)}`
+    );
+    obsMarker.feature = geojson.features[1];
+    layerGroup.addLayer(obsMarker);
+
+    return {
+      id:                     crypto.randomUUID(),
+      kind:                   "vector",
+      name:                   VIEWSHED_LAYER_NAME,
+      sourceType:             "Viewshed Analysis",
+      color,
+      geometryKind:           "mixed",
+      isVisible:              true,
+      geojson,
+      fields:                 ["type", "label", "lat", "lng"],
+      crs:                    CRSManager.DEFAULT_CRS,
+      crsMetadata:            CRSManager.getCrsMetadata(CRSManager.DEFAULT_CRS),
+      styleConfig,
+      labelConfig:            createDefaultLabelConfig(),
+      filterConfig:           createDefaultFilterConfig(),
+      interpolationConfig:    createDefaultInterpolationConfig(),
+      heatmapConfig:          createDefaultHeatmapConfig(),
+      interpolationOverlay:   null,
+      interpolationObjectUrl: "",
+      layerGroup,
+      featureCount:           2,
+      visibleFeatureCount:    2,
+      layerOpacity:           1,
+      isDerived:              true,
+      onRemove() {
+        // Skip cleanup when replacing the layer after a re-run.
+        if (_replacingViewshed) return;
+        if (radiusCircle) { map.removeLayer(radiusCircle); radiusCircle = null; }
+        observerLatLng = null;
+        coordsDisplay.textContent = "";
+        coordsDisplay.classList.remove("is-set");
+        clearObsBtn.hidden = true;
+      },
+    };
   }
 
   /**
@@ -667,60 +817,13 @@
     if (typeof onProjectDirty === "function") onProjectDirty();
   }
 
-  function buildViewshedLayerRecord(canvas, bounds) {
-    const objectUrl = URL.createObjectURL(dataURLToBlob(canvas.toDataURL("image/png")));
-    const overlay   = L.imageOverlay(objectUrl, bounds, {
-      opacity:     1,
-      interactive: false,
-      pane:        "overlayPane",
-    });
-    const layerGroup = L.featureGroup([overlay]);
-
-    return {
-      id:                   crypto.randomUUID(),
-      kind:                 "raster",
-      name:                 VIEWSHED_LAYER_NAME,
-      sourceType:           "Viewshed Analysis",
-      color:                "#00ff78",
-      isVisible:            true,
-      geojson:              { type: "FeatureCollection", features: [] },
-      fields:               [],
-      styleConfig:          createDefaultStyleConfig("#00ff78"),
-      labelConfig:          createDefaultLabelConfig(),
-      filterConfig:         createDefaultFilterConfig(),
-      interpolationConfig:  null,
-      heatmapConfig:        null,
-      interpolationOverlay: null,
-      interpolationObjectUrl: "",
-      layerGroup,
-      featureCount:         1,
-      visibleFeatureCount:  1,
-      rasterObjectUrl:      objectUrl,
-      rasterMetadata: {
-        layerType:   "viewshed",
-        methodLabel: "Line-of-Sight",
-        bounds,
-      },
-      isDerived: true,
-      onRemove() {
-        // Skip cleanup when we are just replacing the layer after a re-run.
-        if (_replacingViewshed) return;
-        if (observerMarker) { map.removeLayer(observerMarker); observerMarker = null; }
-        if (radiusCircle)   { map.removeLayer(radiusCircle);   radiusCircle   = null; }
-        observerLatLng = null;
-        coordsDisplay.textContent = "";
-        coordsDisplay.classList.remove("is-set");
-      },
-    };
-  }
-
   // ── Apply handler ─────────────────────────────────────────────
 
   applyBtn.addEventListener("click", async () => {
     if (isComputing) return;
     if (!validate()) return;
 
-    const isGlobal  = globalDemChk.checked;
+    const isGlobal  = vsDemSource === "global";
     const obsH      = Number(obsHeightInp.value);
     const tgtH      = Number(tgtHeightInp.value);
     const maxRadius = Number(maxRadiusInp.value);  // 0 = unlimited (local only)
@@ -808,24 +911,19 @@
         obsElev, obsH, tgtH, curvature, maxRadius,
       });
 
-      // ── Paint to offscreen canvas ─────────────────────────────
-      const canvas = paintViewshedToCanvas(visibility, demWidth, demHeight);
+      // ── Yield so the progress label update is visible ─────────
+      progressLabel.textContent = "Tracing viewshed polygon\u2026";
+      await new Promise((resolve) => setTimeout(resolve, 0));
 
-      // ── Geographic bounds ─────────────────────────────────────
-      const bounds = (function () {
-        const ext     = transform.extent;
-        const corners = [
-          transform.unprojectRasterPoint(ext.minX, ext.minY),
-          transform.unprojectRasterPoint(ext.minX, ext.maxY),
-          transform.unprojectRasterPoint(ext.maxX, ext.minY),
-          transform.unprojectRasterPoint(ext.maxX, ext.maxY),
-        ];
-        return L.latLngBounds(corners.map((c) => L.latLng(c.lat, c.lng)));
-      })();
+      // ── Trace pixel boundaries → dissolved MultiPolygon ──────
+      const multiPolygon = visibilityToMultiPolygon(visibility, demWidth, demHeight, transform);
+
+      // ── Remove temp observer marker (now embedded in layer) ───
+      if (observerMarker) { map.removeLayer(observerMarker); observerMarker = null; }
 
       // ── Add layer ─────────────────────────────────────────────
       removeExistingViewshedLayer();
-      const layerRecord = buildViewshedLayerRecord(canvas, bounds);
+      const layerRecord = buildViewshedLayerRecord(multiPolygon, observerLatLng);
       addViewshedLayerRecord(layerRecord);
 
       const src = isGlobal ? "Global DEM (Terrarium ~30 m)" : localDemRecord.name;
@@ -836,7 +934,6 @@
       updateStatus(err.message, true);
     } finally {
       clearTimeout(_spinnerGuard);
-      progressLabel.textContent = "Computing viewshed…";
       hideProgress();
     }
   });

@@ -213,6 +213,49 @@ async function saveProjectToDirectory(directoryHandle) {
 
 // ─── Fallback save: download .sdecm bundle ────────────────────────────────────
 
+// ─── Live layer rename (FSA workspace only) ───────────────────────────────────
+
+async function renameLayerFile(layerRecord, oldFileName) {
+  const directoryHandle = projectState.directoryHandle;
+  if (!directoryHandle) return;
+
+  try {
+    const permission = await directoryHandle.requestPermission({ mode: "readwrite" });
+    if (permission !== "granted") {
+      // Roll back the in-memory name change
+      layerRecord.name = /* recover from old filename slug isn't reliable; just warn */ layerRecord.name;
+      updateStatus("Write permission denied — layer rename not saved.", true);
+      return;
+    }
+
+    const newFileName = buildLayerFileName(layerRecord);
+
+    // 1. Write GeoJSON under new name
+    await writeTextToDirectory(directoryHandle, newFileName, serializeLayerToGeoJSON(layerRecord));
+
+    // 2. Update manifest so it points to the new filename
+    const manifest = serializeProject();
+    await writeTextToDirectory(
+      directoryHandle,
+      PROJECT_MANIFEST_FILENAME,
+      JSON.stringify(manifest, null, 2)
+    );
+
+    // 3. Delete the old file only after both writes succeeded
+    if (oldFileName !== newFileName) {
+      try {
+        await directoryHandle.removeEntry(oldFileName);
+      } catch (_) {
+        // Old file may already be gone; not fatal
+      }
+    }
+
+    updateStatus("Layer renamed and saved");
+  } catch (error) {
+    updateStatus(`Rename failed: ${error.message}`, true);
+  }
+}
+
 function saveProjectAsFallback() {
   const manifest = serializeProject();
   const vectorLayers = loadedLayers.filter(
@@ -580,116 +623,262 @@ window.addEventListener("beforeunload", (event) => {
 
 function updateProjectBar() {
   const bar = document.getElementById("project-bar");
-  const compatNote = document.getElementById("project-compat-note");
   if (!bar) return;
 
-  const fsaOk = isFsaSupported();
-  const hasFsaDir = !!(projectState.hasWorkspace && projectState.directoryHandle);
+  const fsaOk        = isFsaSupported();
+  const hasFsaDir    = !!(projectState.hasWorkspace && projectState.directoryHandle);
   const hasBundleOnly = projectState.hasWorkspace && !projectState.directoryHandle;
-  const dirty = projectState.isDirty;
-  const canSaveDirect = hasFsaDir;
-  const hasLayers = loadedLayers.length > 0;
+  const dirty        = projectState.isDirty;
+  const canNew       = loadedLayers.length > 0 || dirty;
+  const canSave      = loadedLayers.length > 0 || dirty;
+  const canSaveAs    = projectState.hasWorkspace;
 
-  // "New" is only useful if there's something to clear
-  const canNew = hasLayers || dirty;
+  // ── Status text (no pill, bare coloured text) ────────────────────────────
+  let statusClass, statusText;
+  if (!projectState.hasWorkspace && !dirty && !loadedLayers.length) {
+    statusClass = "project-bar-status--none";
+    statusText  = "";
+  } else if (hasBundleOnly) {
+    statusClass = "project-bar-status--warn";
+    statusText  = "⚠ no folder";
+  } else if (dirty) {
+    statusClass = "project-bar-status--dirty";
+    statusText  = "● unsaved";
+  } else if (projectState.hasWorkspace) {
+    statusClass = "project-bar-status--clean";
+    statusText  = "✓ saved";
+  } else {
+    statusClass = "project-bar-status--none";
+    statusText  = "";
+  }
 
-  // "Save" is always available once there's layers or changes; first click prompts for name + folder
-  const canSave = hasLayers || dirty;
+  // ── Name ────────────────────────────────────────────────────────────────
+  const nameText = projectState.projectName
+    ? escapeHtml(projectState.projectName)
+    : "No project";
+  const nameClass = projectState.projectName
+    ? "project-bar-name"
+    : "project-bar-name project-bar-name--empty";
 
-  // "Save As" / "Download" only available after the project has been saved at least once
-  const canSaveAs = projectState.hasWorkspace;
+  // ── Popover head: time ──────────────────────────────────────────────────
+  const timeStr = projectState.lastSavedAt
+    ? `Saved ${new Date(projectState.lastSavedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`
+    : dirty ? "Unsaved changes" : "";
 
-  const savedLabel = projectState.lastSavedAt
-    ? `Saved ${new Date(projectState.lastSavedAt).toLocaleTimeString()}`
-    : null;
+  // ── Auto-save ────────────────────────────────────────────────────────────
+  const autoSaveAvail  = isAutoSaveAvailable();
+  const autoSaveActive = autoSaveAvail && _autoSaveEnabled;
+  const toggleClass    = autoSaveActive
+    ? "project-autosave-toggle project-autosave-toggle--on"
+    : "project-autosave-toggle";
+  const asTitle = autoSaveAvail
+    ? (autoSaveActive ? "Auto-save on — click to disable" : "Auto-save off — click to enable")
+    : "Auto-save requires an open project folder";
 
-  const projectNameLabel = projectState.projectName
-    ? `<span class="project-name-label">${escapeHtml(projectState.projectName)}</span>`
+  // ── Save button state ────────────────────────────────────────────────────
+  const saveBtnClass = dirty ? "project-bar-btn project-bar-btn--dirty" : "project-bar-btn";
+  const saveTitle    = hasFsaDir
+    ? `Save to current folder (Ctrl+S)${dirty ? " — unsaved changes" : ""}`
+    : canSave ? "Choose a folder and save (Ctrl+S)" : "Add layers or make changes to save";
+
+  // ── Autosave btn class ───────────────────────────────────────────────────
+  const asBtnClass = autoSaveActive
+    ? "project-bar-btn project-bar-btn--as-on"
+    : "project-bar-btn project-bar-btn--as-off";
+
+  // ── Menu button dirty indicator ──────────────────────────────────────────
+  const menuBtnClass = dirty ? "project-menu-btn project-menu-btn--dirty" : "project-menu-btn";
+  const menuDotHtml  = dirty ? `<span class="project-menu-dot" aria-hidden="true"></span>` : "";
+
+  // ── Reopen row in popover ─────────────────────────────────────────────────
+  const reopenRowHtml = hasFsaDir ? `
+    <button id="project-reopen-btn" class="project-popover-row" type="button"
+      title="Re-grant folder access after a page refresh">
+      <svg viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+      Reopen folder
+    </button>` : "";
+
+  // ── Compat note ───────────────────────────────────────────────────────────
+  const compatHtml = !fsaOk
+    ? `<p class="project-compat-note">Your browser doesn't support folder access — use Download to save a .sdecm bundle and Open to restore it.</p>`
     : "";
 
   bar.innerHTML = `
-    <div class="project-actions">
-      <button
-        id="project-new-btn"
-        class="project-btn ghost-button"
-        type="button"
+    <div class="project-action-bar">
+
+      <!-- ·· menu trigger -->
+      <button id="project-menu-btn" class="${menuBtnClass}" type="button"
+        title="Project menu" aria-haspopup="true" aria-expanded="false">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <circle cx="5"  cy="12" r="1.4" fill="currentColor" stroke="none"/>
+          <circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none"/>
+          <circle cx="19" cy="12" r="1.4" fill="currentColor" stroke="none"/>
+        </svg>
+        ${menuDotHtml}
+      </button>
+
+      <!-- name + status -->
+      <span class="${nameClass}">${nameText}</span>
+      ${statusText ? `<span class="project-bar-status ${statusClass}">${statusText}</span>` : ""}
+
+      <!-- separator -->
+      <span class="project-bar-sep" aria-hidden="true"></span>
+
+      <!-- New -->
+      <button id="project-new-btn" class="project-bar-btn" type="button"
         title="${canNew ? "Clear all layers and start a new project" : "Add layers or make changes to enable New"}"
-        ${!canNew ? "disabled" : ""}
-      >New</button>
+        ${!canNew ? "disabled" : ""} aria-label="New project">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+          <polyline points="14 2 14 8 20 8"/>
+          <line x1="12" y1="18" x2="12" y2="12"/>
+          <line x1="9"  y1="15" x2="15" y2="15"/>
+        </svg>
+      </button>
 
-      <button
-        id="project-open-btn"
-        class="project-btn ghost-button"
-        type="button"
+      <!-- Open -->
+      <button id="project-open-btn" class="project-bar-btn" type="button"
         title="${fsaOk ? "Open a saved project folder" : "Open a .sdecm project file"}"
-      >Open</button>
+        aria-label="Open project">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+        </svg>
+      </button>
 
-      <button
-        id="project-save-btn"
-        class="project-btn ghost-button${dirty ? " project-btn--dirty" : ""}"
-        type="button"
-        title="${canSaveDirect
-          ? `Save to current folder (Ctrl+S)${dirty ? " — unsaved changes" : ""}`
-          : canSave
-            ? "Choose a folder and save project (Ctrl+S)"
-            : "Add layers or make changes to save"}"
+      <!-- Save -->
+      <button id="project-save-btn" class="${saveBtnClass}" type="button"
+        title="${saveTitle}"
         ${!canSave ? "disabled" : ""}
-        aria-label="Save project${dirty ? " — unsaved changes" : ""}"
-      >Save${dirty ? "&nbsp;●" : ""}</button>
+        aria-label="Save project${dirty ? " — unsaved changes" : ""}">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+          <polyline points="17 21 17 13 7 13 7 21"/>
+          <polyline points="7 3 7 8 15 8"/>
+        </svg>
+      </button>
 
-      <button
-        id="project-save-as-btn"
-        class="project-btn ghost-button"
-        type="button"
-        title="${canSaveAs
-          ? (fsaOk ? "Choose a different folder and save project" : "Download project as .sdecm file")
-          : "Save your project first to enable Save As"}"
-        ${!canSaveAs ? "disabled" : ""}
-      >${fsaOk ? "Save As" : "Download"}</button>
+      <!-- Auto-save -->
+      <button id="project-autosave-btn" class="${asBtnClass}" type="button"
+        role="switch" aria-checked="${autoSaveActive}"
+        title="${asTitle}" aria-label="${asTitle}"
+        ${!autoSaveAvail ? "disabled" : ""}>
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <circle cx="12" cy="12" r="10"/>
+          <polyline points="12 6 12 12 16 14"/>
+        </svg>
+      </button>
 
-      ${hasFsaDir ? `
-      <button
-        id="project-reopen-btn"
-        class="project-btn ghost-button project-btn--reopen"
-        type="button"
-        title="Re-grant folder access after a page refresh"
-      >Reopen</button>` : ""}
-
-      <button
-        id="project-autosave-btn"
-        class="project-btn ghost-button${_autoSaveEnabled && isAutoSaveAvailable() ? " project-btn--autosave-on" : isAutoSaveAvailable() ? " project-btn--autosave-off" : ""}"
-        type="button"
-        title="${isAutoSaveAvailable()
-          ? (_autoSaveEnabled ? "Auto-save ON — click to disable" : "Auto-save OFF — click to enable (saves 5 s after each change)")
-          : "Auto-save requires a saved project folder"}"
-        ${!isAutoSaveAvailable() ? "disabled" : ""}
-        aria-pressed="${_autoSaveEnabled && isAutoSaveAvailable()}"
-      >${_autoSaveEnabled && isAutoSaveAvailable() ? "Auto&#8209;save&nbsp;●" : "Auto&#8209;save"}</button>
     </div>
 
-    ${savedLabel || hasBundleOnly || projectState.projectName ? `
-    <p class="project-meta small-note">
-      ${projectNameLabel}
-      ${savedLabel ? `<span>${escapeHtml(savedLabel)}</span>` : ""}
-      ${hasBundleOnly ? `<span class="project-meta-hint">No folder linked — use Save As to keep changes</span>` : ""}
-    </p>` : ""}
   `;
 
-  document.getElementById("project-new-btn")?.addEventListener("click", newProject);
+  // ── Wire up bar buttons ───────────────────────────────────────────────────
+  document.getElementById("project-new-btn")?.addEventListener("click",  newProject);
   document.getElementById("project-open-btn")?.addEventListener("click", openProject);
   document.getElementById("project-save-btn")?.addEventListener("click", saveProject);
-  document.getElementById("project-save-as-btn")?.addEventListener("click", saveProjectAs);
-  document.getElementById("project-reopen-btn")?.addEventListener("click", reopenWorkspace);
   document.getElementById("project-autosave-btn")?.addEventListener("click", toggleAutoSave);
 
-  if (compatNote) {
-    compatNote.hidden = fsaOk;
-    if (!fsaOk) {
-      compatNote.textContent =
-        "Your browser doesn't support folder access. " +
-        "Use Download to save a .sdecm bundle and Open to restore it.";
+  // ── Sync the body-level popover with fresh state ──────────────────────────
+  _syncProjectPopover({
+    nameText, timeStr, canNew, canSave, canSaveAs, fsaOk,
+    saveTitle, reopenRowHtml, toggleClass, autoSaveActive,
+    asTitle, autoSaveAvail, compatHtml
+  });
+
+  // ── Menu toggle — position and open popover ────────────────────────────────
+  document.getElementById("project-menu-btn")?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const btn     = document.getElementById("project-menu-btn");
+    const popover = document.getElementById("project-popover");
+    if (!popover || !btn) return;
+    const isOpen = !popover.classList.contains("is-open");
+    if (isOpen) {
+      // position relative to viewport, then attach to body
+      const rect = btn.getBoundingClientRect();
+      popover.style.top  = (rect.bottom + window.scrollY + 6) + "px";
+      popover.style.left = (rect.left  + window.scrollX)      + "px";
     }
+    popover.classList.toggle("is-open", isOpen);
+    btn.setAttribute("aria-expanded", isOpen);
+  });
+}
+
+function closeProjectPopover() {
+  const popover = document.getElementById("project-popover");
+  const btn     = document.getElementById("project-menu-btn");
+  popover?.classList.remove("is-open");
+  btn?.setAttribute("aria-expanded", "false");
+}
+
+// Build or update the body-level popover element
+function _syncProjectPopover({
+  nameText, timeStr, canNew, canSave, canSaveAs, fsaOk,
+  saveTitle, reopenRowHtml, toggleClass, autoSaveActive,
+  asTitle, autoSaveAvail, compatHtml
+}) {
+  let popover = document.getElementById("project-popover");
+  if (!popover) {
+    popover = document.createElement("div");
+    popover.id = "project-popover";
+    document.body.appendChild(popover);
   }
+  popover.className = "project-popover";
+  popover.setAttribute("role", "menu");
+
+  popover.innerHTML = `
+    <div class="project-popover-head">
+      <div class="project-popover-name">${nameText}</div>
+      ${timeStr ? `<div class="project-popover-time">${timeStr}</div>` : ""}
+    </div>
+    <div class="project-popover-list">
+      <button id="project-new-btn-pop" class="project-popover-row" type="button"
+        title="${canNew ? "Clear all layers and start a new project" : "Add layers or make changes to enable New"}"
+        ${!canNew ? "disabled" : ""}>
+        <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
+        New project
+      </button>
+      <button id="project-open-btn-pop" class="project-popover-row" type="button"
+        title="${fsaOk ? "Open a saved project folder" : "Open a .sdecm project file"}">
+        <svg viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+        Open
+      </button>
+      <button id="project-save-btn-pop" class="project-popover-row project-popover-row--save" type="button"
+        title="${saveTitle}" ${!canSave ? "disabled" : ""}>
+        <svg viewBox="0 0 24 24"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+        Save
+        <span class="project-popover-shortcut">Ctrl S</span>
+      </button>
+      <button id="project-save-as-btn" class="project-popover-row" type="button"
+        title="${canSaveAs
+          ? (fsaOk ? "Choose a different folder and save" : "Download project as .sdecm file")
+          : "Save your project first to enable Save As"}"
+        ${!canSaveAs ? "disabled" : ""}>
+        <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        ${fsaOk ? "Save as…" : "Download"}
+      </button>
+      ${reopenRowHtml}
+      <div class="project-popover-divider" aria-hidden="true"></div>
+      <div class="project-popover-as-row">
+        <span>Auto-save</span>
+        <button
+          id="project-autosave-btn-pop"
+          class="${toggleClass}"
+          type="button" role="switch"
+          aria-checked="${autoSaveActive}"
+          aria-label="${asTitle}" title="${asTitle}"
+          ${!autoSaveAvail ? "disabled" : ""}
+        ><span class="project-autosave-knob"></span></button>
+      </div>
+      ${compatHtml}
+    </div>
+  `;
+
+  document.getElementById("project-new-btn-pop")?.addEventListener("click",  () => { closeProjectPopover(); newProject(); });
+  document.getElementById("project-open-btn-pop")?.addEventListener("click", () => { closeProjectPopover(); openProject(); });
+  document.getElementById("project-save-btn-pop")?.addEventListener("click", () => { closeProjectPopover(); saveProject(); });
+  document.getElementById("project-save-as-btn")?.addEventListener("click",  () => { closeProjectPopover(); saveProjectAs(); });
+  document.getElementById("project-reopen-btn")?.addEventListener("click",   () => { closeProjectPopover(); reopenWorkspace(); });
+  document.getElementById("project-autosave-btn-pop")?.addEventListener("click", toggleAutoSave);
 }
 
 // Keep renderProjectBar as an alias so any existing call sites still work
@@ -715,3 +904,18 @@ function initializeProject() {
 }
 
 initializeProject();
+
+// ── Close project popover when clicking outside ───────────────────────────
+document.addEventListener("click", (e) => {
+  const popover = document.getElementById("project-popover");
+  const bar     = document.getElementById("project-bar");
+  if (!popover?.classList.contains("is-open")) return;
+  // keep open if click is inside the popover itself or the bar trigger
+  if (popover.contains(e.target) || bar?.contains(e.target)) return;
+  closeProjectPopover();
+});
+
+// ── Close project popover on Escape ──────────────────────────────────────
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") closeProjectPopover();
+});

@@ -233,10 +233,10 @@ function getInterpolationColor(value, minValue, maxValue) {
   const ratio = Math.min(Math.max((value - minValue) / denominator, 0), 1);
 
   if (ratio < 0.33) {
-    return interpolateColor("#1a5fff", "#1db7a6", ratio / 0.33);
+    return interpolateColor("#1a5fff", "#F26E22", ratio / 0.33);
   }
   if (ratio < 0.66) {
-    return interpolateColor("#1db7a6", "#ffcc66", (ratio - 0.33) / 0.33);
+    return interpolateColor("#F26E22", "#ffcc66", (ratio - 0.33) / 0.33);
   }
 
   return interpolateColor("#ffcc66", "#ff6b6b", (ratio - 0.66) / 0.34);
@@ -1624,6 +1624,8 @@ function rebuildLayerFromData(layerRecord) {
     syncEditableWorkspace();
   }
 
+  // Reapply master opacity so style changes don't reset slider position
+  if ((layerRecord.layerOpacity ?? 1) < 1) applyLayerOpacity(layerRecord);
   renderLayerList();
   updateInterpolationLegend();
 }
@@ -1657,6 +1659,7 @@ function createLayerRecord(geojson, fileName, sourceType, options = {}) {
     layerGroup: L.featureGroup(),
     featureCount: 0,
     visibleFeatureCount: 0,
+    layerOpacity: 1,
   };
 
   rebuildLayerFromData(layerRecord);
@@ -1711,6 +1714,7 @@ function createLargeCsvLayerRecord(csvDataset, fileName, sourceType) {
       numericFieldSummaries: csvDataset.numericFieldSummaries || {},
     },
     exportMode: csvDataset.previewMode === "grid" ? "grid-preview" : "sample-preview",
+    layerOpacity: 1,
   };
 
   rebuildLayerFromData(layerRecord);
@@ -1730,7 +1734,7 @@ function createRasterLayerRecord(sourceLayerRecord, rasterResult) {
     kind: "raster",
     name: rasterResult.name,
     sourceType: `Interpolation Raster (${rasterResult.metadata?.methodLabel || "Surface"})`,
-    color: sourceLayerRecord?.color || "#43c2ff",
+    color: sourceLayerRecord?.color || "#60a0d8",
     isVisible: true,
     geojson: {
       type: "FeatureCollection",
@@ -1739,7 +1743,7 @@ function createRasterLayerRecord(sourceLayerRecord, rasterResult) {
     fields: [],
     crs: CRSManager.DEFAULT_CRS,
     crsMetadata: CRSManager.getCrsMetadata(CRSManager.DEFAULT_CRS),
-    styleConfig: createDefaultStyleConfig(sourceLayerRecord?.color || "#43c2ff"),
+    styleConfig: createDefaultStyleConfig(sourceLayerRecord?.color || "#60a0d8"),
     labelConfig: createDefaultLabelConfig(),
     interpolationConfig: null,
     heatmapConfig: null,
@@ -1753,6 +1757,7 @@ function createRasterLayerRecord(sourceLayerRecord, rasterResult) {
     rasterMetadata: rasterResult.metadata,
     sourceLayerId: sourceLayerRecord?.id || "",
     isDerived: true,
+    layerOpacity: 1,
   };
 }
 
@@ -1774,14 +1779,14 @@ function createGeoTiffLayerRecord(rasterData, fileName, sourceType) {
     rasterKind: "geotiff",
     name: fileName,
     sourceType,
-    color: "#43c2ff",
+    color: "#60a0d8",
     isVisible: true,
     geojson: {
       type: "FeatureCollection",
       features: [],
     },
     fields: [],
-    styleConfig: createDefaultStyleConfig("#43c2ff"),
+    styleConfig: createDefaultStyleConfig("#60a0d8"),
     labelConfig: createDefaultLabelConfig(),
     rasterStyleConfig: rasterData.styleConfig,
     interpolationConfig: null,
@@ -1799,6 +1804,7 @@ function createGeoTiffLayerRecord(rasterData, fileName, sourceType) {
     featureCount: 1,
     visibleFeatureCount: 1,
     isDerived: false,
+    layerOpacity: 1,
   };
 
   tileLayer.options.layerRecord = layerRecord;
@@ -2820,6 +2826,74 @@ function zoomToLayer(id) {
   }
 }
 
+
+/**
+ * Apply master layer opacity to all Leaflet sublayers.
+ *
+ * Vector layers: path layers get opacity/fillOpacity scaled proportionally;
+ *   markers get their element opacity set directly.
+ * Raster layers: every ImageOverlay gets setOpacity(); TileLayers get theirs
+ *   set via options + redraw.
+ * Interpolation overlays (imageOverlay attached separately) are also updated.
+ *
+ * @param {object} layerRecord
+ */
+function applyLayerOpacity(layerRecord) {
+  const opacity = Math.min(1, Math.max(0, Number(layerRecord.layerOpacity) ?? 1));
+
+  if (isRasterLayerRecord(layerRecord)) {
+    // Image overlays inside the main layerGroup
+    layerRecord.layerGroup.eachLayer((child) => {
+      if (typeof child.setOpacity === "function") {
+        child.setOpacity(opacity);
+      } else if (child.options) {
+        // TileLayer / GeoTIFF tile layer
+        child.options.opacity = opacity;
+        if (typeof child.setOpacity === "function") child.setOpacity(opacity);
+        else if (typeof child.redraw === "function") child.redraw();
+      }
+      // Also handle CSS opacity for elements we can't reach via API
+      if (child._image) child._image.style.opacity = opacity;
+    });
+    // Interpolation overlay attached outside the layerGroup
+    if (layerRecord.interpolationOverlay && typeof layerRecord.interpolationOverlay.setOpacity === "function") {
+      layerRecord.interpolationOverlay.setOpacity(opacity);
+    }
+    return;
+  }
+
+  // Vector layer — walk every Leaflet layer
+  layerRecord.layerGroup.eachLayer((child) => {
+    if (typeof child.setStyle === "function") {
+      // Path (polygon, polyline, circle)
+      try {
+        const currentStyle = child.options || {};
+        const baseOpacity    = Number(currentStyle._baseOpacity    ?? currentStyle.opacity    ?? 1);
+        const baseFillOpacity = Number(currentStyle._baseFillOpacity ?? currentStyle.fillOpacity ?? 0.5);
+
+        // On first call, snapshot the "natural" opacities so repeated slider
+        // moves scale against the original style, not the already-scaled value.
+        if (currentStyle._baseOpacity === undefined) {
+          currentStyle._baseOpacity     = baseOpacity;
+          currentStyle._baseFillOpacity = baseFillOpacity;
+        }
+
+        child.setStyle({
+          opacity:     currentStyle._baseOpacity     * opacity,
+          fillOpacity: currentStyle._baseFillOpacity * opacity,
+        });
+      } catch (_) { /* ignore non-path layers */ }
+    } else if (child._icon) {
+      // Marker icon
+      child._icon.style.opacity = opacity;
+      if (child._shadow) child._shadow.style.opacity = opacity;
+    } else if (child.getElement && child.getElement()) {
+      // CircleMarker / DivIcon
+      child.getElement().style.opacity = opacity;
+    }
+  });
+}
+
 function toggleLayer(id, visible) {
   const layerRecord = loadedLayers.find((item) => item.id === id);
   if (!layerRecord) {
@@ -2997,6 +3071,7 @@ function renderLayerList() {
       (layerRecord.id === selectedTableLayerId || (!selectedTableLayerId && layerRecord.id === activeEditableLayerId));
     wrapper.className = `layer-card${isTableSelected ? " table-selected" : ""}`;
     wrapper.dataset.layerId = layerRecord.id;
+    wrapper.title = "Right-click for layer options";
 
     const isVisible = layerRecord.isVisible !== false;
     const isEditable = isEditableLayerRecord(layerRecord) && layerRecord.id === activeEditableLayerId;
@@ -3021,7 +3096,9 @@ function renderLayerList() {
     const tertiaryMeta = isRasterLayerRecord(layerRecord)
       ? layerRecord.rasterKind === "geotiff"
         ? `${escapeHtml(rasterMetadata?.crs || "Unknown CRS")} • ${formatCompactNumber(rasterMetadata?.minValue)} to ${formatCompactNumber(rasterMetadata?.maxValue)}`
-        : `${formatCompactNumber(rasterMetadata?.minValue)} to ${formatCompactNumber(rasterMetadata?.maxValue)}`
+        : layerRecord.rasterKind === "terrarium"
+          ? "EPSG:3857 • Elevation-encoded PNG tiles"
+          : `${formatCompactNumber(rasterMetadata?.minValue)} to ${formatCompactNumber(rasterMetadata?.maxValue)}`
       : isLargeCsvLayerRecord(layerRecord)
         ? "Large-file mode: table editing and direct point edits are disabled"
       : isEditable
@@ -3040,37 +3117,33 @@ function renderLayerList() {
       <div class='layer-card-header'>
         <div class='layer-card-primary'>
           <button class='layer-drag-handle' type='button' title='Drag to reorder' aria-label='Drag to reorder layer' draggable='false'>
-            <svg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 14 14' fill='currentColor' aria-hidden='true'>
+            <svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 14 14' fill='currentColor' aria-hidden='true'>
               <circle cx='4' cy='2.5' r='1.2'/><circle cx='10' cy='2.5' r='1.2'/>
               <circle cx='4' cy='7' r='1.2'/><circle cx='10' cy='7' r='1.2'/>
               <circle cx='4' cy='11.5' r='1.2'/><circle cx='10' cy='11.5' r='1.2'/>
             </svg>
           </button>
+          <span class='layer-visibility-btn-placeholder'></span>
           <button class='layer-name-button' type='button'>${escapeHtml(layerRecord.name)}</button>
           <button class='edit-mode-toggle ${isEditable ? "active" : ""}' data-edit-toggle-id='${layerRecord.id}' type='button' aria-pressed='${isEditable}' title='${escapeHtml(editTitle)}' ${canEdit ? "" : "disabled"}>
             <span class='edit-mode-dot'></span>
           </button>
         </div>
-        <div class='layer-card-details'>
-          <div class='layer-meta layer-meta-strong'>${primaryMeta}</div>
-          <div class='layer-meta'>${secondaryMeta}</div>
-          <div class='layer-meta'>${escapeHtml(tertiaryMeta)}</div>
+        <div class='layer-card-meta-row'>
+          <span class='layer-meta layer-meta-strong'>${primaryMeta}</span>
+          <span class='layer-meta layer-meta-sep'>·</span>
+          <span class='layer-meta'>${escapeHtml(tertiaryMeta)}</span>
         </div>
-        <div class='layer-card-footer'>
-          <span class='layer-visibility-btn-placeholder'></span>
-          <details class='layer-menu-shell'>
-            <summary class='layer-menu-toggle' aria-label='Layer actions' title='Layer actions'>...</summary>
-            <div class='layer-menu' role='menu'>
-              <button class='layer-menu-action zoom' type='button' role='menuitem'>Zoom</button>
-              ${canStyle ? "<button class='layer-menu-action style accent-action' type='button' role='menuitem'>Style</button>" : ""}
-              ${canRasterStyle ? "<button class='layer-menu-action raster-style accent-action' type='button' role='menuitem'>Raster Style</button>" : ""}
-              ${canInterpolate ? "<button class='layer-menu-action interpolation accent-action' type='button' role='menuitem'>Interpolate</button>" : ""}
-              ${canHeatmap ? "<button class='layer-menu-action heatmap accent-action' type='button' role='menuitem'>Heatmap</button>" : ""}
-              ${canEdit ? "<button class='layer-menu-action filter accent-action' type='button' role='menuitem'>Filter</button>" : ""}
-              ${isVectorLayerRecord(layerRecord) ? "<button class='layer-menu-action export' type='button' role='menuitem'>Export</button>" : ""}
-              <button class='layer-menu-action remove' type='button' role='menuitem'>Remove</button>
-            </div>
-          </details>
+        <div class='layer-opacity-row'>
+          <svg class='layer-opacity-icon' xmlns='http://www.w3.org/2000/svg' width='11' height='11' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round' aria-hidden='true'><circle cx='12' cy='12' r='10'/><path d='M12 2a10 10 0 0 1 0 20'/></svg>
+          <input
+            type='range'
+            class='layer-opacity-slider'
+            min='0' max='100'
+            value='${Math.round((layerRecord.layerOpacity ?? 1) * 100)}'
+            aria-label='Layer opacity'
+          />
+          <span class='layer-opacity-value'>${Math.round((layerRecord.layerOpacity ?? 1) * 100)}%</span>
         </div>
       </div>
     `;
@@ -3083,19 +3156,10 @@ function renderLayerList() {
     visibilityBtn.setAttribute("aria-label", isVisible ? "Layer visible" : "Layer hidden");
     visibilityBtn.setAttribute("aria-pressed", String(isVisible));
     visibilityBtn.innerHTML = isVisible
-      ? `<svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>`
-      : `<svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>`;
+      ? `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>`
+      : `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>`;
     wrapper.querySelector(".layer-visibility-btn-placeholder").replaceWith(visibilityBtn);
     const editButton = wrapper.querySelector(".edit-mode-toggle");
-    const menuShell = wrapper.querySelector(".layer-menu-shell");
-    const zoomButton = wrapper.querySelector(".zoom");
-    const styleButton = wrapper.querySelector(".style");
-    const rasterStyleButton = wrapper.querySelector(".raster-style");
-    const interpolationButton = wrapper.querySelector(".interpolation");
-    const heatmapButton = wrapper.querySelector(".heatmap");
-    const filterButton = wrapper.querySelector(".filter");
-    const exportButton = wrapper.querySelector(".export");
-    const removeButton = wrapper.querySelector(".remove");
 
     nameButton.addEventListener("click", () => {
       if (isVectorLayerRecord(layerRecord) && typeof selectTableLayer === "function") {
@@ -3112,26 +3176,33 @@ function renderLayerList() {
       visibilityBtn.setAttribute("aria-label", nowVisible ? "Layer visible" : "Layer hidden");
       visibilityBtn.setAttribute("aria-pressed", String(nowVisible));
       visibilityBtn.innerHTML = nowVisible
-        ? `<svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>`
-        : `<svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>`;
+        ? `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>`
+        : `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>`;
     });
     if (canEdit) {
       editButton.addEventListener("click", () => runLayerCardAction(layerRecord, "toggle-edit"));
     }
-    const closeMenu = () => {
-      if (menuShell) {
-        menuShell.open = false;
-      }
-    };
+    // All other actions (zoom, style, filter, export, remove…) are accessed via the right-click context menu
     wrapper.addEventListener("contextmenu", (event) => openLayerContextMenu(event, layerRecord));
-    zoomButton.addEventListener("click", () => runLayerCardAction(layerRecord, "zoom", closeMenu));
-    styleButton?.addEventListener("click", () => runLayerCardAction(layerRecord, "style", closeMenu));
-    rasterStyleButton?.addEventListener("click", () => runLayerCardAction(layerRecord, "raster-style", closeMenu));
-    interpolationButton?.addEventListener("click", () => runLayerCardAction(layerRecord, "interpolate", closeMenu));
-    heatmapButton?.addEventListener("click", () => runLayerCardAction(layerRecord, "heatmap", closeMenu));
-    filterButton?.addEventListener("click", () => runLayerCardAction(layerRecord, "filter", closeMenu));
-    exportButton?.addEventListener("click", () => runLayerCardAction(layerRecord, "export", closeMenu));
-    removeButton.addEventListener("click", () => runLayerCardAction(layerRecord, "remove", closeMenu));
+
+    // Opacity slider
+    const opacitySlider = wrapper.querySelector(".layer-opacity-slider");
+    const opacityValue  = wrapper.querySelector(".layer-opacity-value");
+    if (opacitySlider) {
+      // Initialise track fill on mount
+      opacitySlider.style.setProperty("--pct", opacitySlider.value);
+      opacitySlider.addEventListener("input", () => {
+        const pct = Number(opacitySlider.value);
+        layerRecord.layerOpacity = pct / 100;
+        opacityValue.textContent = `${pct}%`;
+        opacitySlider.style.setProperty("--pct", pct);
+        applyLayerOpacity(layerRecord);
+        if (typeof onProjectDirty === "function") onProjectDirty();
+      });
+      // Prevent drag-to-reorder from triggering while using slider
+      opacitySlider.addEventListener("mousedown", (e) => e.stopPropagation());
+      opacitySlider.addEventListener("pointerdown", (e) => e.stopPropagation());
+    }
 
     // Drag-to-reorder: make the whole card draggable; handle triggers it
     const dragHandle = wrapper.querySelector(".layer-drag-handle");
