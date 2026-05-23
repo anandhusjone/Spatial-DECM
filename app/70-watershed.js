@@ -281,7 +281,7 @@
     pourMarker = L.circleMarker(pourPt, {
       radius:6, color:ACCENT, fillColor:ACCENT, fillOpacity:0.35, weight:2, interactive:false,
     }).addTo(map);
-    coordsLbl.textContent = `${pourPt.lat.toFixed(5)}, ${pourPt.lng.toFixed(5)}`;
+    coordsLbl.value = `${pourPt.lat.toFixed(6)}, ${pourPt.lng.toFixed(6)}`;
     coordsLbl.classList.add("is-set");
     clearPourBtn.hidden = false;
   }
@@ -292,12 +292,59 @@
     if (picking) stopPicking();
     pourPt = null;
     if (pourMarker) { map.removeLayer(pourMarker); pourMarker = null; }
-    coordsLbl.textContent = "Not set";
+    coordsLbl.value = "";
+    coordsLbl.placeholder = "Not set — or paste lat, lng";
     coordsLbl.classList.remove("is-set");
     clearPourBtn.hidden = true;
   }
 
   clearPourBtn.addEventListener("click", clearPourPoint);
+
+  // ── Coordinate paste / manual entry ──────────────────────────
+  function parseWtCoordInput(raw) {
+    const clean = raw.trim().replace(/\s+/g, " ");
+    const m = clean.match(/^(-?\d+(?:\.\d+)?)[,\s]+(-?\d+(?:\.\d+)?)$/);
+    if (!m) return null;
+    const lat = parseFloat(m[1]);
+    const lng = parseFloat(m[2]);
+    if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return null;
+    return L.latLng(lat, lng);
+  }
+
+  function applyWtCoordInput() {
+    const latlng = parseWtCoordInput(coordsLbl.value);
+    if (!latlng) {
+      coordsLbl.classList.add("coords-invalid");
+      setTimeout(() => coordsLbl.classList.remove("coords-invalid"), 900);
+      return;
+    }
+    if (picking) stopPicking();
+    // Set the pour point marker
+    pourPt = latlng;
+    if (pourMarker) map.removeLayer(pourMarker);
+    pourMarker = L.circleMarker(pourPt, {
+      radius: 6, color: ACCENT, fillColor: ACCENT, fillOpacity: 0.35, weight: 2, interactive: false,
+    }).addTo(map);
+    coordsLbl.value = `${pourPt.lat.toFixed(6)}, ${pourPt.lng.toFixed(6)}`;
+    coordsLbl.classList.add("is-set");
+    clearPourBtn.hidden = false;
+    // Pan map to point
+    map.setView(pourPt, Math.max(map.getZoom(), 12), { animate: true });
+  }
+
+  coordsLbl.addEventListener("paste", () => {
+    setTimeout(applyWtCoordInput, 0);
+  });
+
+  coordsLbl.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") { e.preventDefault(); applyWtCoordInput(); }
+  });
+
+  coordsLbl.addEventListener("blur", () => {
+    if (coordsLbl.value.trim() && !coordsLbl.classList.contains("is-set")) {
+      applyWtCoordInput();
+    }
+  });
 
   /* ── Polygon ──────────────────────────────────────────────── */
 

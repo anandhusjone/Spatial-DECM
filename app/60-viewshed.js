@@ -296,7 +296,7 @@
   function setObserverLocation(latlng) {
     observerLatLng = latlng;
 
-    coordsDisplay.textContent = `${latlng.lat.toFixed(5)}, ${latlng.lng.toFixed(5)}`;
+    coordsDisplay.value = `${latlng.lat.toFixed(6)}, ${latlng.lng.toFixed(6)}`;
     coordsDisplay.classList.add("is-set");
     clearObsBtn.hidden = false;
 
@@ -331,12 +331,57 @@
     }
   });
 
+  // ── Coordinate paste / manual entry ──────────────────────────
+  function parseCoordInput(raw) {
+    // Accept formats:  "lat, lng"  |  "lat lng"  |  "lat,lng"
+    // Both decimal and DMS-like numbers; just numeric pairs.
+    const clean = raw.trim().replace(/\s+/g, " ");
+    const m = clean.match(/^(-?\d+(?:\.\d+)?)[,\s]+(-?\d+(?:\.\d+)?)$/);
+    if (!m) return null;
+    const lat = parseFloat(m[1]);
+    const lng = parseFloat(m[2]);
+    if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return null;
+    return L.latLng(lat, lng);
+  }
+
+  function applyCoordInput() {
+    const latlng = parseCoordInput(coordsDisplay.value);
+    if (!latlng) {
+      // Invalid — flash the field red briefly
+      coordsDisplay.classList.add("coords-invalid");
+      setTimeout(() => coordsDisplay.classList.remove("coords-invalid"), 900);
+      return;
+    }
+    if (isPicking) cancelPicking();
+    clearError();
+    setObserverLocation(latlng);
+    // Pan map to the pasted point so user can see it
+    map.setView(latlng, Math.max(map.getZoom(), 12), { animate: true });
+  }
+
+  coordsDisplay.addEventListener("paste", () => {
+    // Let the paste event finish before reading value
+    setTimeout(applyCoordInput, 0);
+  });
+
+  coordsDisplay.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") { e.preventDefault(); applyCoordInput(); }
+  });
+
+  coordsDisplay.addEventListener("blur", () => {
+    // Only apply on blur if there's something typed
+    if (coordsDisplay.value.trim() && !coordsDisplay.classList.contains("is-set")) {
+      applyCoordInput();
+    }
+  });
+
   clearObsBtn.addEventListener("click", () => {
     if (isPicking) cancelPicking();
     observerLatLng = null;
     if (observerMarker) { map.removeLayer(observerMarker); observerMarker = null; }
     if (radiusCircle)   { map.removeLayer(radiusCircle);   radiusCircle   = null; }
-    coordsDisplay.textContent = "Not set";
+    coordsDisplay.value = "";
+    coordsDisplay.placeholder = "Not set — or paste lat, lng";
     coordsDisplay.classList.remove("is-set");
     clearObsBtn.hidden = true;
   });
@@ -791,7 +836,8 @@
         if (_replacingViewshed) return;
         if (radiusCircle) { map.removeLayer(radiusCircle); radiusCircle = null; }
         observerLatLng = null;
-        coordsDisplay.textContent = "";
+        coordsDisplay.value = "";
+        coordsDisplay.placeholder = "Not set — or paste lat, lng";
         coordsDisplay.classList.remove("is-set");
         clearObsBtn.hidden = true;
       },
