@@ -3901,6 +3901,8 @@ details[open] .advanced-style-summary::before {
   display: flex;
   align-items: center;
   gap: 8px;
+  overflow: hidden;
+  min-width: 0;
 }
 
 .vs-pick-btn {
@@ -3929,6 +3931,50 @@ details[open] .advanced-style-summary::before {
 
 .vs-coords.is-set {
   color: var(--accent);
+}
+
+/* Editable coordinate input */
+.vs-coords-input {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  outline: none;
+  flex: 1 1 0;
+  min-width: 0;
+  max-width: 160px;
+  font-family: inherit;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+  transition: border-color 0.15s, background 0.15s;
+  cursor: text;
+  padding: 2px 5px;
+}
+
+.vs-coords-input:hover,
+.vs-coords-input:focus {
+  border-color: var(--border);
+  background: rgba(255,255,255,0.04);
+}
+
+.vs-coords-input::placeholder {
+  color: var(--text-muted);
+  opacity: 0.7;
+  font-style: italic;
+  font-size: 10.5px;
+}
+
+.vs-coords-input.coords-invalid {
+  border-color: rgba(255, 107, 107, 0.7) !important;
+  background: rgba(255, 107, 107, 0.08) !important;
+  color: #ff6b6b !important;
+  animation: shake-input 0.3s ease;
+}
+
+@keyframes shake-input {
+  0%, 100% { transform: translateX(0); }
+  25%       { transform: translateX(-4px); }
+  75%       { transform: translateX(4px); }
 }
 
 /* ── Error message ── */
@@ -4254,6 +4300,8 @@ details[open] .advanced-style-summary::before {
   align-items: center;
   gap: 8px;
   padding: 0 0 2px;
+  overflow: hidden;
+  min-width: 0;
 }
 
 .wt-action-btn {
@@ -4300,30 +4348,71 @@ details[open] .advanced-style-summary::before {
   opacity: 1;
 }
 
+/* Editable coordinate input for watershed */
+.wt-coords-input {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  outline: none;
+  font-family: inherit;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+  flex: 1 1 0;
+  min-width: 0;
+  max-width: 155px;
+  transition: border-color 0.15s, background 0.15s;
+  cursor: text;
+  padding: 2px 5px;
+}
+
+.wt-coords-input:hover,
+.wt-coords-input:focus {
+  border-color: var(--border);
+  background: rgba(255,255,255,0.04);
+}
+
+.wt-coords-input::placeholder {
+  color: var(--text-muted);
+  opacity: 0.7;
+  font-style: italic;
+  font-size: 10.5px;
+}
+
+.wt-coords-input.coords-invalid {
+  border-color: rgba(255, 107, 107, 0.7) !important;
+  background: rgba(255, 107, 107, 0.08) !important;
+  color: #ff6b6b !important;
+  animation: shake-input 0.3s ease;
+}
+
 /* ── Clear (×) button ── */
 .wt-clear-btn {
   flex-shrink: 0;
-  display: inline-flex;
+  display: none; /* hidden by default; JS removes [hidden] attr */
   align-items: center;
   justify-content: center;
-  width: 18px;
-  height: 18px;
+  width: 20px;
+  height: 20px;
   padding: 0;
-  border: 1px solid rgba(255, 107, 107, 0.4);
+  border: 1px solid rgba(255, 107, 107, 0.5);
   border-radius: 4px;
-  background: rgba(255, 107, 107, 0.08);
-  color: #ff6b6b;
-  font-size: 10px;
+  background: rgba(255, 107, 107, 0.12);
+  color: #ff6b6b !important;
+  font-size: 11px;
   line-height: 1;
   cursor: pointer;
   transition: background 0.15s, border-color 0.15s;
 }
+.wt-clear-btn:not([hidden]) {
+  display: inline-flex !important;
+}
 .wt-clear-btn:hover {
-  background: rgba(255, 107, 107, 0.2);
-  border-color: rgba(255, 107, 107, 0.7);
+  background: rgba(255, 107, 107, 0.25);
+  border-color: rgba(255, 107, 107, 0.8);
 }
 .wt-clear-btn[hidden] {
-  display: none;
+  display: none !important;
 }
 
 /* ── Canvas hint ── */
