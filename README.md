@@ -37,7 +37,7 @@ Drag-and-drop upload · File picker · Multiple vector/raster layers · Auto-zoo
 
 **🗺️ Map**
 
-Top toolbar basemap switcher · CartoDB Dark / Light basemaps · Google Satellite · Dark / Light / System theme · Attribute table toggle
+Top toolbar basemap switcher · CartoDB Dark / Light · Google Satellite · OpenTopoMap · Dark / Light / System theme · Attribute table toggle
 
 <br/>
 
@@ -50,6 +50,18 @@ Create layers · Add points, lines, polygons · Edit geometries · Attribute tab
 **🧮 Field Calculator**
 
 QGIS-style expressions · Arithmetic · String ops (`||`) · `CASE WHEN` · Null checks · Spatial functions · Preview before applying · Save & reuse expressions
+
+<br/>
+
+**📐 Measure Tool**
+
+Distance and area measurement · Live cursor preview · Multi-segment polyline · Polygon area on 3+ points
+
+<br/>
+
+**📍 GPS Locate**
+
+One-click device location · Accuracy circle · Auto-zoom to position
 
 </td>
 <td width="50%" valign="top">
@@ -68,7 +80,13 @@ Advanced point / line / polygon symbols · Categorized · Graduated · Rule-base
 
 **🔥 Analysis**
 
-Heatmap · IDW interpolation · Gaussian interpolation · Nearest Neighbor interpolation · Viewshed (line-of-sight)
+Heatmap · IDW interpolation · Gaussian Kernel interpolation · Nearest Neighbor interpolation · Viewshed (line-of-sight) · **Watershed & Channel Extraction**
+
+<br/>
+
+**💾 Project Workspace**
+
+Save / load `.sdecm` project bundles · File System Access API for live folder workspaces · Auto-save (5 s debounce) · Ctrl+S shortcut · Dirty-state tracking
 
 <br/>
 
@@ -92,7 +110,7 @@ GeoJSON · KML · Zipped Shapefile
 | `.zip` | Zipped shapefile bundle — must include `.shp`, `.shx`, `.dbf` |
 | `.shp` + sidecars | Loose shapefile import — select or drag the matching `.shp`, `.dbf`, `.shx`, `.prj`, and `.cpg` files together |
 | `.csv` | Lat/lon columns (`lat`, `lon`, `lng`, `x`, `y`) **or** a combined column (`coordinates`, `coords`, `location`, `point`, etc.) with values like `"8.42, 77.04"`. Delimiter auto-detected: comma, semicolon, tab, or pipe. Large files (> 50 000 points) use streaming mode — see [Large CSV files](#large-csv-files). |
-| `.tif` / `.tiff` | GeoTIFF raster with tiled browser rendering, raster metadata, pixel sampling, NoData handling, and WGS84 / Web Mercator / WGS84 UTM alignment. Also used as input for local viewshed analysis. |
+| `.tif` / `.tiff` | GeoTIFF raster with tiled browser rendering, raster metadata, pixel sampling, NoData handling, and WGS84 / Web Mercator / WGS84 UTM alignment. Also used as DEM input for viewshed and watershed analysis. |
 
 <br/>
 
@@ -142,7 +160,35 @@ When *Use Global DEM* is ticked the app fetches RGB-encoded Terrarium elevation 
 
 **Algorithm** — Radial Bresenham line-of-sight sweep (`app/60-viewshed.js`). For every pixel on the DEM perimeter a ray is cast from the observer outward. A cell is marked visible if its angle of elevation from the observer equals or exceeds the running maximum angle seen on that ray so far. Optional Earth-curvature and atmospheric-refraction correction uses k = 0.13.
 
-**Output** — An raster overlay layer named *Viewshed* is added to the map. Visible cells are painted in semi-transparent green (`rgba(0, 255, 120, 0.45)`). The map legend shows two swatches (Visible / Not visible).
+**Output** — A raster overlay layer named *Viewshed* is added to the map. Visible cells are painted in semi-transparent green (`rgba(0, 255, 120, 0.45)`). The map legend shows two swatches (Visible / Not visible).
+
+<br/>
+
+## Watershed & Channel Extraction
+
+Watershed analysis delineates upstream drainage basins and extracts stream channel networks from a DEM. Click the **Watershed** toolbar button to open the panel.
+
+**Elevation sources** — same Local / Global DEM options as Viewshed (shared tile utilities in `app/dem-utils.js`).
+
+**AOI modes**
+
+| Mode | How it works |
+|------|-------------|
+| **Pour Point** | Click a point on the map; it snaps to the nearest stream cell and delineates the full upstream basin |
+| **Polygon** | Draw a freehand polygon; channels and sub-basins are clipped to that extent |
+| **Canvas** | Uses the current map viewport as the analysis extent (Global DEM only) |
+
+**Parameters**
+
+- **Flow accumulation threshold** — minimum upstream cell count to classify a cell as a stream channel. Lower values produce denser networks.
+- **Minimum slope** — Wang & Liu (2006) sink-fill gradient (default 1×10⁻⁴ m/m). Prevents flat-terrain flow stagnation by imposing a gentle drainage gradient across filled depressions.
+- **Sub-basins** — optional toggle to subdivide the delineated basin at channel confluences.
+
+**Algorithm** — D8 flow direction with Wang & Liu sink-fill, GPU-accelerated via WebGL 1 where available (falls back to CPU workers automatically). Flow accumulation, basin delineation, and sub-basin extraction each run in dedicated Web Workers to keep the UI responsive. A cancel button terminates all active workers immediately.
+
+**Output** — Two vector layers are added to the map: *Stream Channels* (polylines) and *Watershed Basin* (polygon, with optional sub-basin polygons).
+
+<br/>
 
 ## CRS handling
 
@@ -158,20 +204,28 @@ Labels can be enabled per layer with a field or `{field}` template expression, f
 
 <br/>
 
+## Project Workspace
+
+Projects are saved as `.sdecm` bundles (a JSON manifest + per-layer GeoJSON files). In browsers that support the **File System Access API** (Chrome / Edge), the app can read and write directly to a local folder — enabling Ctrl+S saves and 5-second auto-save. In other browsers a `.sdecm` zip bundle is downloaded instead. On reload, FSA workspaces are automatically re-connected with a single permission prompt.
+
+<br/>
+
 ## Source layout
 
 | File | Role |
 |------|------|
-| `app/00-core.js` | Global constants, shared helpers, theme/basemap, modal and status utilities |
+| `app/00-core.js` | Global constants, shared helpers, theme/basemap (Dark · Light · Satellite · Topo), modal and status utilities |
 | `app/10-analysis-layers.js` | Layer management, CSV parsing & streaming worker, GeoJSON normalisation, interpolation, heatmap, export |
-| `app/20-tools-ui.js` | Toolbar, layer list UI, style/label panels, filter/query builder |
+| `app/20-tools-ui.js` | Toolbar, layer list UI, style/label panels, filter/query builder, export modal |
 | `app/30-bootstrap.js` | App initialisation, file-drop handling, drag-and-drop wiring |
-| `app/40-project.js` | Project save/load (JSON bundle), per-layer GeoJSON export |
-| `app/50-map-tools.js` | Draw / edit tools, geometry snapping, attribute table |
-| `app/60-viewshed.js` | Viewshed analysis panel, tile fetching, line-of-sight algorithm |
+| `app/40-project.js` | Project save/load (`.sdecm` bundle or FSA folder), auto-save, dirty-state tracking |
+| `app/50-map-tools.js` | GPS locate, distance/area measure tool |
+| `app/60-viewshed.js` | Viewshed analysis panel, tile fetching, Bresenham line-of-sight algorithm |
+| `app/70-watershed.js` | Watershed & channel extraction — D8 flow direction, Wang & Liu sink-fill, WebGL GPU acceleration, Web Worker offloading |
 | `app/99-help-content.js` | In-app help text |
 | `app/calculator/` | Field calculator — tokenizer, parser, AST, evaluator, built-in function catalog |
 | `app/crs-manager.js` | CRS detection, Proj4 reprojection, UTM zone helpers |
+| `app/dem-utils.js` | Shared DEM / Terrarium tile utilities — tile fetching, stitching, coordinate transforms (used by viewshed & watershed) |
 | `app/vector-style-manager.js` | Symbol rendering, categorised/graduated/rule-based styling, label engine |
 
 <br/>
@@ -187,8 +241,8 @@ Labels can be enabled per layer with a field or `{field}` template expression, f
 
 ## Philosophy
 
- Spatial DECM is **not** a replacement for QGIS or ArcGIS.  
- It's built for the moments when those feel like overkill.
+Spatial DECM is **not** a replacement for QGIS or ArcGIS.  
+It's built for the moments when those feel like overkill.
 
 <br/>
 
