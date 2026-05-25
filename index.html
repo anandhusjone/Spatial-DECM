@@ -592,9 +592,11 @@
         <div class="wt-section">
           <div class="wt-row">
             <span class="wt-section-label">Channel Threshold</span>
-            <span class="wt-label-hint" id="wt-threshold-display">500 cells</span>
+            <input id="wt-threshold-input" type="number" min="1" max="999999" step="1" value="500"
+              style="width:72px;padding:2px 5px;border:1px solid var(--border,#ccc);border-radius:4px;font-size:12px;text-align:right;background:var(--surface,#fff);color:var(--text,#000);">
+            <span style="font-size:11px;opacity:0.6;margin-left:2px">cells</span>
           </div>
-          <input id="wt-threshold-slider" class="wt-slider" type="range" min="10" max="5000" step="10" value="500">
+          <input id="wt-threshold-slider" class="wt-slider" type="range" min="1" max="10000" step="1" value="500">
         </div>
 
         <div class="wt-divider"></div>

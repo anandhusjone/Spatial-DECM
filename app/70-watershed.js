@@ -68,7 +68,7 @@
   const clearPolyBtn = document.getElementById("wt-clear-poly-btn");
 
   const threshSlider   = document.getElementById("wt-threshold-slider");
-  const threshDisplay  = document.getElementById("wt-threshold-display");
+  const threshInput    = document.getElementById("wt-threshold-input");
 
   const minSlopeSlider  = document.getElementById("wt-minslope-slider");
   const minSlopeDisplay = document.getElementById("wt-minslope-display");
@@ -399,7 +399,18 @@
   /* ── Sliders ──────────────────────────────────────────────── */
 
   threshSlider.addEventListener("input", () => {
-    threshDisplay.textContent = `${threshSlider.value} cells`;
+    threshInput.value = threshSlider.value;
+  });
+
+  threshInput.addEventListener("input", () => {
+    const v = Math.max(1, Math.min(999999, parseInt(threshInput.value, 10) || 1));
+    threshSlider.value = v;
+  });
+
+  threshInput.addEventListener("change", () => {
+    const v = Math.max(1, Math.min(999999, parseInt(threshInput.value, 10) || 1));
+    threshInput.value = v;
+    threshSlider.value = v;
   });
 
   function getMinSlope() {
@@ -665,7 +676,7 @@
    * into R as a normalised float so readPixels gives it back as
    * data[i*4] * 255.
    */
-  function gpuFlowDir(gl, demData, W, H, csx, csy) {
+  function gpuFlowDir(gl, demData, W, H, csx, csy, noData) {
     // Pad to power-of-2 or just use raw size — NPOT is fine with CLAMP_TO_EDGE
     gl.canvas.width = W; gl.canvas.height = H;
 
@@ -681,17 +692,29 @@
 
     // GLSL ES 1.0 (WebGL 1): no array initialisers, no continue in for-loops.
     // Unroll the 8 D8 directions as calls to a helper function.
+    const hasND = (noData !== undefined && noData !== null && !Number.isNaN(noData));
+    const ndGLSL = hasND ? noData.toPrecision(9) : "3.40282347e+38"; // use max float as sentinel when no real nodata
     const FS_FD = `
       precision highp float;
       uniform sampler2D u_dem;
       uniform vec2      u_texel;  // vec2(1.0/W, 1.0/H)
       uniform vec2      u_cell;   // vec2(csx, csy) in map units
+      uniform float     u_nodata;
+      uniform bool      u_has_nodata;
       varying vec2      v_uv;
 
+      bool isND(float v) {
+        return u_has_nodata && (abs(v - u_nodata) < 0.5);
+      }
+
+      // Returns the drop-slope toward the neighbour at offset (dc,dr) in texel space.
+      // Returns +1e20 if the neighbour is OOB or NoData (acts as drainage outlet).
+      // Returns -1e20 if the current cell or neighbour is flat/uphill.
       float nbSlope(vec2 px, float elev, float dc, float dr) {
         vec2 nuv = px + vec2(dc, dr) * u_texel;
-        if (nuv.x < 0.0 || nuv.x > 1.0 || nuv.y < 0.0 || nuv.y > 1.0) return -1.0e9;
-        float ne   = texture2D(u_dem, nuv).r;
+        if (nuv.x < 0.0 || nuv.x > 1.0 || nuv.y < 0.0 || nuv.y > 1.0) return 1.0e20;
+        float ne = texture2D(u_dem, nuv).r;
+        if (isND(ne)) return 1.0e20;
         float dx   = abs(dc) * u_cell.x;
         float dy   = abs(dr) * u_cell.y;
         bool  diag = (dc != 0.0) && (dr != 0.0);
@@ -702,6 +725,8 @@
       void main() {
         vec2  px   = v_uv;
         float elev = texture2D(u_dem, px).r;
+        // NoData cell: output code 0 (no flow direction)
+        if (isND(elev)) { gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0); return; }
         float best = 0.0;
         float code = 0.0;
         float slp;
@@ -732,6 +757,9 @@
     gl.uniform1i(gl.getUniformLocation(prog, "u_dem"), 0);
     gl.uniform2f(gl.getUniformLocation(prog, "u_texel"),   1/W, 1/H);
     gl.uniform2f(gl.getUniformLocation(prog, "u_cell"), csx, csy);
+    const hasND2 = (noData !== undefined && noData !== null && !Number.isNaN(noData));
+    gl.uniform1f(gl.getUniformLocation(prog, "u_nodata"), hasND2 ? noData : 0.0);
+    gl.uniform1i(gl.getUniformLocation(prog, "u_has_nodata"), hasND2 ? 1 : 0);
 
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, demTex);
@@ -837,8 +865,15 @@
   const FILL_SINKS_WORKER = `${WORKER_HEAP_SRC}
     function workerFn(d) {
       const { W, H, minSlope, csx, csy } = d;
+      const noData = (d.noData !== undefined && !isNaN(d.noData)) ? d.noData : null;
       const dem    = new Float32Array(d.dem);   // transferred in
-      const filled = new Float32Array(dem);
+      // IMPORTANT: use Float64 for the filled array throughout the Priority-Flood.
+      // Float32 only has ~7 significant digits, so on high-elevation DEMs (e.g. 4000 m)
+      // the tiny minSlope increment (e.g. 0.003 m) is lost to rounding, producing a
+      // perfectly flat filled DEM with no gradient — streams cannot form.
+      // We convert back to Float32 at the very end (flow-dir only needs relative order).
+      const filled  = new Float64Array(W * H);
+      for (let i = 0; i < W * H; i++) filled[i] = dem[i];
       const inQueue = new Uint8Array(W * H);
       const heap    = new Heap();
       const SQRT2   = Math.SQRT2;
@@ -848,14 +883,28 @@
       const cellAvg = (csx + csy) * 0.5;
       const DIST = D8.map(([dr,dc]) => (dr && dc ? SQRT2 : 1.0) * cellAvg);
 
-      // Seed the heap with all border cells
+      const isND = (v) => noData !== null ? v === noData : !isFinite(v);
+
+      // Replace NoData cells in filled with +Infinity so they never fill
+      for (let i = 0; i < W * H; i++) { if (isND(dem[i])) filled[i] = Infinity; }
+
+      // Seed: grid-edge cells AND any interior cell adjacent to a NoData cell or
+      // out-of-bounds neighbour (matches SAGA's outlet seeding behaviour so that
+      // interior NoData holes / lakes also act as drainage outlets).
       for (let r = 0; r < H; r++) {
         for (let c = 0; c < W; c++) {
-          if (r===0 || r===H-1 || c===0 || c===W-1) {
-            const i = r*W+c;
-            inQueue[i] = 1;
-            heap.push(filled[i], i);
+          const i = r*W+c;
+          if (isND(dem[i])) continue;  // NoData cells are not seeds themselves
+          let isSeed = (r===0 || r===H-1 || c===0 || c===W-1);
+          if (!isSeed) {
+            for (let dd = 0; dd < 8; dd++) {
+              const nr = r + D8[dd][0], nc = c + D8[dd][1];
+              if (nr < 0 || nr >= H || nc < 0 || nc >= W || isND(dem[nr*W+nc])) {
+                isSeed = true; break;
+              }
+            }
           }
+          if (isSeed && !inQueue[i]) { inQueue[i] = 1; heap.push(filled[i], i); }
         }
       }
 
@@ -868,7 +917,7 @@
           const nr = r+dr, nc = c+dc;
           if (nr<0 || nr>=H || nc<0 || nc>=W) continue;
           const ni = nr*W+nc;
-          if (inQueue[ni]) continue;
+          if (inQueue[ni] || isND(dem[ni])) continue;
           inQueue[ni] = 1;
           // Wang & Liu: impose minimum outflow gradient from parent
           const minFill = elev + minSlope * DIST[dd];
@@ -876,7 +925,10 @@
           heap.push(filled[ni], ni);
         }
       }
-      return filled;
+      // Convert back to Float32 for the downstream flow-dir step
+      const out = new Float32Array(W * H);
+      for (let i = 0; i < W * H; i++) out[i] = filled[i];
+      return out;
     }`;
 
   /**
@@ -887,21 +939,32 @@
   const FLOW_DIR_WORKER = `
     function workerFn(d) {
       const { W, H, csx, csy } = d;
+      const noData = (d.noData !== undefined && d.noData !== null) ? d.noData : null;
       const dem = new Float32Array(d.dem);
       const D8  = [[0,1],[1,1],[1,0],[1,-1],[0,-1],[-1,-1],[-1,0],[-1,1]];
       const CODES = [1,2,4,8,16,32,64,128];
       const fd = new Uint8Array(W*H);
-      for (let r=1;r<H-1;r++) {
-        for (let c=1;c<W-1;c++) {
-          const elev=dem[r*W+c];
+      const isND = (v) => noData !== null ? v === noData : !isFinite(v);
+      for (let r=0;r<H;r++) {
+        for (let c=0;c<W;c++) {
+          const i=r*W+c;
+          if(isND(dem[i])) continue;   // NoData cell: leave fd=0
+          const elev=dem[i];
           let best=-Infinity, bestD=0;
           for (let dd=0;dd<8;dd++) {
             const [dr,dc]=D8[dd];
+            const nr=r+dr, nc=c+dc;
+            // Out-of-bounds or NoData neighbour → acts as a drainage outlet
+            // (infinite slope toward it, matching SAGA's seeding rule)
+            if(nr<0||nr>=H||nc<0||nc>=W||isND(dem[nr*W+nc])) {
+              if(Infinity>best){best=Infinity;bestD=dd;}
+              continue;
+            }
             const dist=(dr&&dc)?Math.sqrt((dc*csx)**2+(dr*csy)**2):(dc===0?csy:csx);
-            const slp=(elev-dem[(r+dr)*W+(c+dc)])/dist;
+            const slp=(elev-dem[nr*W+nc])/dist;
             if(slp>best){best=slp;bestD=dd;}
           }
-          if(best>0) fd[r*W+c]=CODES[bestD];
+          if(best>0||best===Infinity) fd[i]=CODES[bestD];
         }
       }
       return fd;
@@ -1623,7 +1686,7 @@
      Async wrappers that auto-detect GPU / workers
      ──────────────────────────────────────────────────────────── */
 
-  async function fillSinks(dem, W, H, minSlope, csx, csy) {
+  async function fillSinks(dem, W, H, minSlope, csx, csy, noData) {
     try {
       // fillSinks is inherently sequential (heap), but run it off-thread
       // so the UI stays alive during the long computation.
@@ -1631,26 +1694,49 @@
         // Transfer the buffer directly (no .slice copy) to halve peak memory.
         // The caller must not use `dem` after this call.
         const buf = dem.buffer;
-        const result = await runInWorker(FILL_SINKS_WORKER, { dem: buf, W, H, minSlope, csx, csy }, [buf]);
+        const result = await runInWorker(FILL_SINKS_WORKER, { dem: buf, W, H, minSlope, csx, csy, noData: noData !== undefined && !Number.isNaN(noData) ? noData : null }, [buf]);
         return result;
       }
     } catch (e) {
       console.warn("[Watershed] Worker fillSinks failed, falling back to main thread.", e);
     }
     // Synchronous CPU fallback (Wang & Liu)
-    return _fillSinksCPU(dem, W, H, minSlope, csx, csy);
+    return _fillSinksCPU(dem, W, H, minSlope, csx, csy, noData);
   }
 
-  function _fillSinksCPU(dem, W, H, minSlope, csx, csy) {
-    const filled   = new Float32Array(dem);
+  function _fillSinksCPU(dem, W, H, minSlope, csx, csy, noData) {
+    // Use Float64 internally — Float32's ~7 significant digits can't represent
+    // minSlope increments (e.g. 0.003 m) added to high elevations (e.g. 4000 m).
+    const filled   = new Float64Array(W * H);
+    for (let i = 0; i < W * H; i++) filled[i] = dem[i];
     const inQueue  = new Uint8Array(W * H);
     const heap     = new Heap();
     const SQRT2    = Math.SQRT2;
     const cellAvg  = (csx + csy) * 0.5;
     const DIST     = D8_DIRS.map(([dr,dc]) => (dr && dc ? SQRT2 : 1.0) * cellAvg);
-    for (let r = 0; r < H; r++)
-      for (let c = 0; c < W; c++)
-        if (r===0||r===H-1||c===0||c===W-1) { const i=r*W+c; inQueue[i]=1; heap.push(filled[i],i); }
+    const ndVal    = (noData !== undefined && !Number.isNaN(noData)) ? noData : null;
+    const isND     = (v) => ndVal !== null ? v === ndVal : !isFinite(v);
+
+    // Replace NoData cells with +Infinity in filled so they never fill
+    for (let i = 0; i < W * H; i++) { if (isND(dem[i])) filled[i] = Infinity; }
+
+    // Seed: edge cells + any valid cell adjacent to a NoData or out-of-bounds neighbour
+    for (let r = 0; r < H; r++) {
+      for (let c = 0; c < W; c++) {
+        const i = r*W+c;
+        if (isND(dem[i])) continue;
+        let isSeed = (r===0 || r===H-1 || c===0 || c===W-1);
+        if (!isSeed) {
+          for (let d = 0; d < 8; d++) {
+            const nr = r + D8_DIRS[d][0], nc = c + D8_DIRS[d][1];
+            if (nr < 0 || nr >= H || nc < 0 || nc >= W || isND(dem[nr*W+nc])) {
+              isSeed = true; break;
+            }
+          }
+        }
+        if (isSeed && !inQueue[i]) { inQueue[i] = 1; heap.push(filled[i], i); }
+      }
+    }
     while (heap.size > 0) {
       const [elev, idx] = heap.pop();
       const r = (idx/W)|0, c = idx%W;
@@ -1659,22 +1745,25 @@
         const nr=r+dr, nc=c+dc;
         if (nr<0||nr>=H||nc<0||nc>=W) continue;
         const ni = nr*W+nc;
-        if (inQueue[ni]) continue;
+        if (inQueue[ni] || isND(dem[ni])) continue;
         inQueue[ni] = 1;
         const minFill = elev + minSlope * DIST[d];
         if (filled[ni] < minFill) filled[ni] = minFill;
         heap.push(filled[ni], ni);
       }
     }
-    return filled;
+    // Convert back to Float32 — flow-dir only needs relative order
+    const out = new Float32Array(W * H);
+    for (let i = 0; i < W * H; i++) out[i] = filled[i];
+    return out;
   }
 
-  async function computeFlowDir(dem, W, H, csx, csy) {
+  async function computeFlowDir(dem, W, H, csx, csy, noData) {
     // Try GPU first — D8 per-cell is embarrassingly parallel
     const gl = getGL();
     if (gl) {
       try {
-        const fd = gpuFlowDir(gl, dem, W, H, csx, csy);
+        const fd = gpuFlowDir(gl, dem, W, H, csx, csy, noData);
         if (fd) {
           console.info("[Watershed] D8 flow direction computed on GPU.");
           return fd;
@@ -1688,27 +1777,37 @@
     try {
       if (typeof Worker !== "undefined") {
         const buf = dem.buffer;   // transfer directly — no copy
-        return await runInWorker(FLOW_DIR_WORKER, { dem: buf, W, H, csx, csy }, [buf]);
+        return await runInWorker(FLOW_DIR_WORKER, { dem: buf, W, H, csx, csy, noData: noData !== undefined && !Number.isNaN(noData) ? noData : null }, [buf]);
       }
     } catch (e) {
       console.warn("[Watershed] Worker flowDir failed, falling back to main thread.", e);
     }
-    return _flowDirCPU(dem, W, H, csx, csy);
+    return _flowDirCPU(dem, W, H, csx, csy, noData);
   }
 
-  function _flowDirCPU(dem, W, H, csx, csy) {
+  function _flowDirCPU(dem, W, H, csx, csy, noData) {
     const fd = new Uint8Array(W * H);
-    for (let r = 1; r < H-1; r++) {
-      for (let c = 1; c < W-1; c++) {
-        const elev = dem[r*W+c];
+    const ndVal = (noData !== undefined && !Number.isNaN(noData)) ? noData : null;
+    const isND  = (v) => ndVal !== null ? v === ndVal : !isFinite(v);
+    for (let r = 0; r < H; r++) {
+      for (let c = 0; c < W; c++) {
+        const i = r*W+c;
+        if (isND(dem[i])) continue;   // NoData cell: leave fd=0
+        const elev = dem[i];
         let best = -Infinity, bestD = 0;
         for (let d = 0; d < 8; d++) {
           const [dr, dc] = D8_DIRS[d];
+          const nr = r+dr, nc = c+dc;
+          // Out-of-bounds or NoData neighbour acts as drainage outlet
+          if (nr < 0 || nr >= H || nc < 0 || nc >= W || isND(dem[nr*W+nc])) {
+            if (Infinity > best) { best = Infinity; bestD = d; }
+            continue;
+          }
           const dist = (dr && dc) ? Math.sqrt((dc*csx)**2+(dr*csy)**2) : (dc===0?csy:csx);
-          const slope = (elev - dem[(r+dr)*W+(c+dc)]) / dist;
+          const slope = (elev - dem[nr*W+nc]) / dist;
           if (slope > best) { best = slope; bestD = d; }
         }
-        if (best > 0) fd[r*W+c] = D8_CODES[bestD];
+        if (best > 0 || best === Infinity) fd[i] = D8_CODES[bestD];
       }
     }
     return fd;
@@ -2239,7 +2338,7 @@
       /* ── STEP 0: Load DEM ───────────────────────────────────── */
       setProgress(0); await tick();
 
-      let dem, W, H, transform, csx, csy;
+      let dem, W, H, transform, csx, csy, demNoData = NaN;
 
       if (demSource === "global") {
         let centre, radius;
@@ -2284,18 +2383,21 @@
           samples: [0], width: W, height: H, interleave: true,
         });
         dem = new Float32Array(rasters);
+        // Extract noData value so interior holes act as outlets (SAGA behaviour)
+        const nd = lr.rasterImage.getGDALNoData?.();
+        demNoData = (nd !== undefined && nd !== null && nd !== "") ? Number(nd) : NaN;
       }
 
       /* ── STEP 1: Fill sinks (Wang & Liu 2006) ──────────────────── */
       setProgress(1); await tick(); checkCancelled();
       const minSlope = getMinSlope();
-      const filled = await fillSinks(dem, W, H, minSlope, csx, csy);
+      const filled = await fillSinks(dem, W, H, minSlope, csx, csy, demNoData);
       dem = null;   // release raw DEM — no longer needed
 
       /* ── STEP 2: D8 Flow direction ───────────────────────────── */
       checkCancelled();
       setProgress(2, "Computing flow direction (" + (_gpuOk ? "GPU" : "worker") + ")…"); await tick();
-      const fd = await computeFlowDir(filled, W, H, csx, csy);
+      const fd = await computeFlowDir(filled, W, H, csx, csy, demNoData);
 
       /* ── STEP 3: Flow accumulation ───────────────────────────── */
       checkCancelled();
@@ -2303,7 +2405,7 @@
       const accum = await computeAccum(fd, W, H);
 
       checkCancelled();
-      const thr = Math.max(1, Number(threshSlider.value) || 500);
+      const thr = Math.max(1, parseInt(threshInput.value, 10) || 500);
 
       /* ── STEP 4: Channel sanity check ────────────────────────── */
       setProgress(4); await tick();
