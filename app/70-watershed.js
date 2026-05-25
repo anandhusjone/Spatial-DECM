@@ -448,7 +448,7 @@
     } else {
       if (inputMode !== "canvas") {
         const r = Number(radiusIn.value);
-        if (!r || r < 5000 || r > 100000) return fail("Radius must be 5–100 km.");
+        if (!r || r < 5000 || r > 200000) return fail("Radius must be 5–200 km.");
       }
     }
     if (inputMode === "pourpoint" && !pourPt) return fail("Pick a pour point on the map.");
@@ -2352,7 +2352,7 @@
           const cos  = Math.cos(cLat * Math.PI / 180);
           const dLat = (bounds.getNorth() - bounds.getSouth()) * 111320 / 2;
           const dLng = (bounds.getEast()  - bounds.getWest())  * 111320 * cos / 2;
-          radius = Math.max(5000, Math.min(100000, Math.ceil(Math.hypot(dLat, dLng))));
+          radius = Math.max(5000, Math.min(200000, Math.ceil(Math.hypot(dLat, dLng))));
         } else if (inputMode === "polygon") {
           const lats = polyLatLngs.map(l => l.lat);
           const lngs = polyLatLngs.map(l => l.lng);
@@ -2362,7 +2362,7 @@
           const cos  = Math.cos(cLat * Math.PI / 180);
           const dLat = (Math.max(...lats) - Math.min(...lats)) * 111320 / 2;
           const dLng = (Math.max(...lngs) - Math.min(...lngs)) * 111320 * cos / 2;
-          radius = Math.max(5000, Math.min(100000, Math.ceil(Math.hypot(dLat, dLng) * 1.2)));
+          radius = Math.max(5000, Math.min(200000, Math.ceil(Math.hypot(dLat, dLng) * 1.2)));
         } else {
           centre = pourPt;
           radius = Number(radiusIn.value);
