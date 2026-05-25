@@ -166,6 +166,10 @@ When *Use Global DEM* is ticked the app fetches RGB-encoded Terrarium elevation 
 
 ## Watershed & Channel Extraction
 
+<p align="center">
+  <img src="src/watershed_demo.gif" width="800" alt="Watershed Demo">
+</p>
+
 Watershed analysis delineates upstream drainage basins and extracts stream channel networks from a DEM. Click the **Watershed** toolbar button to open the panel.
 
 **Elevation sources** — same Local / Global DEM options as Viewshed (shared tile utilities in `app/dem-utils.js`).
