@@ -15,6 +15,10 @@
 
 <br/>
 
+<p align="center">
+  <img src="src/sdecm_v2.gif" width="800" alt="Watershed Demo">
+</p>
+
 ## Why this exists
 
 Full GIS software like QGIS or ArcGIS is powerful — but often overkill. Opening a single `.geojson` file shouldn't require a 2GB install.
