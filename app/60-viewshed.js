@@ -147,8 +147,10 @@
 
     function moveDrag(clientX, clientY) {
       if (!dragging) return;
-      panel.style.left = Math.max(0, startLeft + (clientX - startX)) + "px";
-      panel.style.top  = Math.max(0, startTop  + (clientY - startY)) + "px";
+      const maxLeft = window.innerWidth  - panel.offsetWidth;
+      const maxTop  = window.innerHeight - panel.offsetHeight;
+      panel.style.left = Math.min(Math.max(0, startLeft + (clientX - startX)), maxLeft) + "px";
+      panel.style.top  = Math.min(Math.max(0, startTop  + (clientY - startY)), maxTop)  + "px";
     }
 
     function endDrag() {
