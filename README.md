@@ -2,7 +2,7 @@
   <br/>
   <img src="Logo1.png" alt="Spatial DECM" style="max-width: 100%; height: auto;">
   <br/><br/>
-  <p><em>A lightweight, browser-based GIS viewer and editor</em></p>
+  <p><em>A lightweight, browser-based GIS viewer and editor </em></p>
 </div>
 
 <br/>
