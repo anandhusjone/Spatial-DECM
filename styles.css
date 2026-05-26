@@ -4716,3 +4716,59 @@ details[open] .advanced-style-summary::before {
 .layer-opacity-row:has(.layer-opacity-slider:not([value="100"])) .layer-opacity-value {
   color: var(--accent);
 }
+
+/* ── Map pointer coordinate pill ────────────────────────────────── */
+.map-coord-pill {
+  position: absolute;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 0;
+  height: 30px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--liquid-glass-bg);
+  backdrop-filter: blur(14px) saturate(1.6);
+  -webkit-backdrop-filter: blur(14px) saturate(1.6);
+  box-shadow: var(--liquid-glass-shadow);
+  pointer-events: none;
+  white-space: nowrap;
+  z-index: 500;
+  transition: opacity 200ms ease;
+}
+
+.map-coord-pill::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(135deg, rgba(255,255,255,0.10) 0%, rgba(255,255,255,0.00) 100%);
+  pointer-events: none;
+}
+
+.map-coord-label {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--accent);
+  letter-spacing: 0.07em;
+  margin-right: 4px;
+}
+
+.map-coord-val {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  min-width: 62px;
+}
+
+.map-coord-sep {
+  width: 1px;
+  height: 12px;
+  background: var(--border);
+  margin: 0 10px;
+  flex-shrink: 0;
+}
