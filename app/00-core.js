@@ -570,11 +570,17 @@ function applyAppBasemap(themeName) {
   if (basemapLabel) {
     basemapLabel.textContent = getBasemapLabel();
   }
-  // Redraw GeoTIFF tile layers after basemap swap (prevents canvas tiles going blank)
+  // Re-add raster layer groups after basemap swap so they sit on top of the new
+  // basemap tile layer. Leaflet's internal _resetView on baselayer swap can push
+  // canvas tile layers behind the incoming basemap; removing and re-adding the
+  // layerGroup restores correct z-order. redraw() is also called to force
+  // canvas tiles to re-render in case they went blank.
   if (typeof loadedLayers !== "undefined") {
-    loadedLayers.forEach((lr) => {
-      if (lr.isVisible !== false && lr.rasterTileLayer?.redraw) {
-        lr.rasterTileLayer.redraw();
+    [...loadedLayers].reverse().forEach((lr) => {
+      if (lr.isVisible !== false && lr.rasterTileLayer) {
+        map.removeLayer(lr.layerGroup);
+        lr.layerGroup.addTo(map);
+        if (lr.rasterTileLayer.redraw) lr.rasterTileLayer.redraw();
       }
     });
   }
@@ -592,12 +598,15 @@ function cycleBasemap() {
   if (basemapLabel) {
     basemapLabel.textContent = getBasemapLabel();
   }
-  // Redraw GeoTIFF tile layers — Leaflet's internal _resetView on baselayer
-  // swap can blank canvas tiles; a redraw forces them to re-render on top.
+  // Re-add raster layer groups after basemap swap so they sit on top of the new
+  // basemap tile layer. Leaflet's _resetView on baselayer swap pushes canvas tile
+  // layers behind the incoming basemap; removing and re-adding restores z-order.
   if (typeof loadedLayers !== "undefined") {
-    loadedLayers.forEach((lr) => {
-      if (lr.isVisible !== false && lr.rasterTileLayer?.redraw) {
-        lr.rasterTileLayer.redraw();
+    [...loadedLayers].reverse().forEach((lr) => {
+      if (lr.isVisible !== false && lr.rasterTileLayer) {
+        map.removeLayer(lr.layerGroup);
+        lr.layerGroup.addTo(map);
+        if (lr.rasterTileLayer.redraw) lr.rasterTileLayer.redraw();
       }
     });
   }
@@ -626,9 +635,11 @@ function selectBasemap(id) {
   activeBasemap = id;
   if (basemapLabel) basemapLabel.textContent = getBasemapLabel();
   if (typeof loadedLayers !== "undefined") {
-    loadedLayers.forEach((lr) => {
-      if (lr.isVisible !== false && lr.rasterTileLayer?.redraw) {
-        lr.rasterTileLayer.redraw();
+    [...loadedLayers].reverse().forEach((lr) => {
+      if (lr.isVisible !== false && lr.rasterTileLayer) {
+        map.removeLayer(lr.layerGroup);
+        lr.layerGroup.addTo(map);
+        if (lr.rasterTileLayer.redraw) lr.rasterTileLayer.redraw();
       }
     });
   }
