@@ -234,7 +234,7 @@ Projects are saved as `.sdecm` bundles (a JSON manifest + per-layer GeoJSON file
 | `app/calculator/` | Field calculator — tokenizer, parser, AST, evaluator, built-in function catalog |
 | `app/crs-manager.js` | CRS detection, Proj4 reprojection, UTM zone helpers |
 | `app/dem-utils.js` | Shared DEM / Terrarium tile utilities — tile fetching, stitching, coordinate transforms (used by viewshed & watershed) |
-| `app/vector-style-manager.js` | Symbol rendering, categorised/graduated/rule-based styling, label engine |
+| `app/vector-style-manager.js` | Symbol rendering, categorised/graduated/rule-based styling, label engine. |
 
 <br/>
 
