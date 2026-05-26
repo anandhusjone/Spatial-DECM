@@ -1678,3 +1678,25 @@ function applyEditHistorySnapshot(snapshot, layerRecord) {
   layerRecord.fields = collectFieldNamesFromGeoJSON(layerRecord.geojson);
   layerRecord.featureCount = layerRecord.geojson.features.length;
 }
+
+/* ── Pointer coordinate pill ──────────────────────────────────── */
+(function () {
+  const pill = document.getElementById('map-coord-pill');
+  const latEl = document.getElementById('map-coord-lat');
+  const lngEl = document.getElementById('map-coord-lng');
+  if (!pill || !latEl || !lngEl) return;
+
+  function fmt(val) {
+    return val.toFixed(4) + '\u00b0';
+  }
+
+  map.on('mousemove', function (e) {
+    latEl.textContent = fmt(e.latlng.lat);
+    lngEl.textContent = fmt(e.latlng.lng);
+    pill.style.opacity = '1';
+  });
+
+  map.on('mouseout', function () {
+    pill.style.opacity = '0.35';
+  });
+}());
