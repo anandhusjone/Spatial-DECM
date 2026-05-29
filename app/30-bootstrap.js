@@ -377,11 +377,9 @@ themeCycleBtn.addEventListener("click", () => {
   const triggerBtn  = document.getElementById("basemap-switcher-btn");
   const dropdown    = document.getElementById("basemap-dropdown");
   const options     = dropdown.querySelectorAll(".bm-option");
-  let closeTimer    = null;
   let previewsDrawn = false;
 
   function openPicker() {
-    clearTimeout(closeTimer);
     dropdown.hidden = false;
     triggerBtn.setAttribute("aria-expanded", "true");
     syncSelected();
@@ -393,9 +391,14 @@ themeCycleBtn.addEventListener("click", () => {
     triggerBtn.setAttribute("aria-expanded", "false");
   }
 
-  picker.addEventListener("mouseenter", openPicker);
-  picker.addEventListener("mouseleave", () => {
-    closeTimer = setTimeout(closePicker, 220);
+  triggerBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (dropdown.hidden) { openPicker(); } else { closePicker(); }
+  });
+
+  // Close when clicking outside
+  document.addEventListener("click", (e) => {
+    if (!picker.contains(e.target)) { closePicker(); }
   });
 
   // Keyboard: Escape closes
@@ -743,3 +746,241 @@ renderAttributeTable();
 initializeTheme();
 initializeBrandLogo();
 applyAttributeTableVisibility();
+
+// ── Concentric edit-toggle parallax ─────────────────────────────────────────
+// Tracks cursor position relative to the map-panel centre and nudges every
+// active .edit-mode-dot subtly in that direction (max ±2.8 px).
+// When the cursor reaches the map-panel centre the dot briefly turns green and
+// a ripple radiates outward through the button.
+(function initEditDotParallax() {
+  const mapPanel = document.querySelector(".map-panel");
+  if (!mapPanel) return;
+
+  const MAX_PX = 2.8;
+  // Radius in screen pixels that defines the "at centre" detection zone.
+  // 20 px radius (40 px diameter) — small enough to feel precise, large enough
+  // that mousemove events (which fire every ~4-8 px) reliably land inside it.
+  const CENTRE_RADIUS_PX = 20;
+  // Minimum ms between ripple triggers on the same button.
+  const RIPPLE_COOLDOWN_MS = 900;
+
+  let rafId = null;
+  let targetX = 0;
+  let targetY = 0;
+  let currentX = 0;
+  let currentY = 0;
+  // Whether the cursor is currently inside the map panel.
+  let cursorOverMap = false;
+  // Raw screen-pixel offset from map-panel centre (used for the centred check).
+  let rawDx = Infinity;
+  let rawDy = Infinity;
+
+  // Global cursor tracking — button is in sidebar, not map panel.
+  let lastClientX = window.innerWidth / 2;
+  let lastClientY = window.innerHeight / 2;
+
+  // Own flag — immune to DOM churn from renderLayerList() re-renders.
+  // Kept in sync by a MutationObserver on the layer list.
+  let editModeActive = false;
+
+  // Per-layer-id timestamp of last ripple, so rapid re-triggering is suppressed.
+  const lastRippleTime = new Map();
+
+  function lerp(a, b, t) { return a + (b - a) * t; }
+
+  function computeTarget(clientX, clientY) {
+    const rect = mapPanel.getBoundingClientRect();
+    const cx = rect.left + rect.width  * 0.5;
+    const cy = rect.top  + rect.height * 0.5;
+    rawDx = clientX - cx;
+    rawDy = clientY - cy;
+    const nx = rawDx / (rect.width  * 0.5);
+    const ny = rawDy / (rect.height * 0.5);
+    targetX = Math.max(-1, Math.min(1, nx)) * MAX_PX;
+    targetY = Math.max(-1, Math.min(1, ny)) * MAX_PX;
+  }
+
+  function scheduleTickIfNeeded() {
+    if (rafId === null) rafId = requestAnimationFrame(tick);
+  }
+
+  // ── Centre ripple ───────────────────────────────────────────────────────────
+  // Briefly flashes the dot green and emits a radial ripple that fills the button.
+  // Tracks which layer ids currently have the dot locked green (cursor at centre).
+  const centredLayerIds = new Set();
+
+  // ── Dot colour state machine ────────────────────────────────────────────────
+  // Called every tick for every active toggle. Transitions the dot to/from green
+  // based on whether isCentred is true, and fires the ripple only on the rising
+  // edge (not-centred → centred).
+  function updateDotCentreState(toggle, dot, layerId, isCentred) {
+    const wasGreen = centredLayerIds.has(layerId);
+
+    if (isCentred && !wasGreen) {
+      // ── Rising edge: enter centred state ───────────────────────────────────
+      centredLayerIds.add(layerId);
+
+      const GREEN      = "#22c55e";
+      const GREEN_GLOW = "0 0 0 4px rgba(34, 197, 94, 0.32)";
+
+      // Bounce the button + dot exactly like the toggle-on animation.
+      anime.remove([toggle, dot]);
+      anime({
+        targets:  toggle,
+        scale:    [1, 1.16, 1.04],
+        duration: 420,
+        easing:   "easeOutBack",
+        complete() { toggle.style.transform = ""; },
+      });
+      anime({
+        targets:         dot,
+        scale:           [1, 1.38, 1],
+        backgroundColor: [{ value: GREEN, duration: 180, easing: "easeOutCubic" }],
+        boxShadow:       [{ value: GREEN_GLOW, duration: 180, easing: "easeOutCubic" }],
+        duration:        440,
+        easing:          "easeOutExpo",
+        // Clear inline transform so CSS translate(--dot-x, --dot-y) parallax
+        // is not overridden by anime's residual inline style.
+        complete() { dot.style.transform = ""; },
+      });
+
+      // Ripple — fired only on the rising edge so it doesn't spam.
+      if (canAnimate) {
+        const now = Date.now();
+        if ((lastRippleTime.get(layerId) || 0) + RIPPLE_COOLDOWN_MS <= now) {
+          lastRippleTime.set(layerId, now);
+          const ripple = document.createElement("span");
+          ripple.className = "edit-mode-ripple";
+          toggle.appendChild(ripple);
+          anime.set(ripple, { scale: 0, opacity: 0.8 });
+          anime({
+            targets:  ripple,
+            scale:    1.0,
+            opacity:  0,
+            duration: 480,
+            easing:   "easeOutCubic",
+            complete() { ripple.remove(); },
+          });
+        }
+      }
+
+    } else if (!isCentred && wasGreen) {
+      // ── Falling edge: leave centred state, revert to accent colour ─────────
+      centredLayerIds.delete(layerId);
+
+      const accentColor = getComputedStyle(document.documentElement)
+                            .getPropertyValue("--accent").trim() || "#F26E22";
+      const accentGlow  = "0 0 0 6px var(--accent-soft)";
+
+      anime.remove(dot);
+      anime({
+        targets:         dot,
+        backgroundColor: [{ value: accentColor, duration: 260, easing: "easeOutCubic" }],
+        boxShadow:       [{ value: accentGlow,   duration: 260, easing: "easeOutCubic" }],
+      });
+    }
+  }
+
+  // Evaluated on every mousemove (not inside tick) so a fast-moving cursor
+  // can't skip through the 5 px zone between animation frames.
+  let isCentred = false;
+
+  function updateCentredState() {
+    isCentred = cursorOverMap
+      && (rawDx * rawDx + rawDy * rawDy) < CENTRE_RADIUS_PX * CENTRE_RADIUS_PX;
+  }
+
+  function tick() {
+    rafId = null;
+    currentX = lerp(currentX, targetX, 0.12);
+    currentY = lerp(currentY, targetY, 0.12);
+    const x = Math.round(currentX * 100) / 100;
+    const y = Math.round(currentY * 100) / 100;
+
+    document.querySelectorAll(".edit-mode-toggle").forEach((toggle) => {
+      const dot = toggle.querySelector(".edit-mode-dot");
+      if (!dot) return;
+      if (toggle.classList.contains("active")) {
+        dot.style.setProperty("--dot-x", x + "px");
+        dot.style.setProperty("--dot-y", y + "px");
+        const layerId = toggle.dataset.editToggleId || toggle.dataset.layerId || "";
+        updateDotCentreState(toggle, dot, layerId, isCentred);
+      } else {
+        dot.style.setProperty("--dot-x", "0px");
+        dot.style.setProperty("--dot-y", "0px");
+        // If a previously centred layer's button is now inactive, clean up state.
+        const layerId = toggle.dataset.editToggleId || toggle.dataset.layerId || "";
+        if (centredLayerIds.has(layerId)) centredLayerIds.delete(layerId);
+      }
+    });
+    if (Math.abs(currentX - targetX) > 0.01 || Math.abs(currentY - targetY) > 0.01) {
+      rafId = requestAnimationFrame(tick);
+    }
+  }
+
+  // MutationObserver watches the layer list for DOM changes (renderLayerList
+  // replaces the whole subtree). Re-syncs editModeActive from the live DOM
+  // and re-kicks the animation if needed.
+  const layerList = document.getElementById("layer-list");
+  if (layerList) {
+    new MutationObserver(() => {
+      const wasActive = editModeActive;
+      editModeActive = !!document.querySelector(".edit-mode-toggle.active");
+      if (editModeActive) {
+        // Re-compute target from last known cursor (handles post-toggle re-render)
+        const rect = mapPanel.getBoundingClientRect();
+        cursorOverMap = lastClientX >= rect.left && lastClientX <= rect.right &&
+                        lastClientY >= rect.top  && lastClientY <= rect.bottom;
+        if (cursorOverMap) computeTarget(lastClientX, lastClientY);
+        scheduleTickIfNeeded();
+      } else if (wasActive) {
+        targetX = 0;
+        targetY = 0;
+        cursorOverMap = false;
+        centredLayerIds.clear();
+        scheduleTickIfNeeded();
+      }
+    }).observe(layerList, { childList: true, subtree: true, attributes: true, attributeFilter: ["class"] });
+  }
+
+  document.addEventListener("mousemove", (e) => {
+    lastClientX = e.clientX;
+    lastClientY = e.clientY;
+  });
+
+  mapPanel.addEventListener("mousemove", (e) => {
+    if (!editModeActive) return;
+    cursorOverMap = true;
+    computeTarget(e.clientX, e.clientY);
+    updateCentredState();
+    // Evaluate dot colour immediately on every mousemove so a fast-moving
+    // cursor can't pass through the 5 px zone between animation frames.
+    document.querySelectorAll(".edit-mode-toggle").forEach((toggle) => {
+      if (!toggle.classList.contains("active")) return;
+      const dot = toggle.querySelector(".edit-mode-dot");
+      if (!dot) return;
+      const layerId = toggle.dataset.editToggleId || toggle.dataset.layerId || "";
+      updateDotCentreState(toggle, dot, layerId, isCentred);
+    });
+    scheduleTickIfNeeded();
+  });
+
+  mapPanel.addEventListener("mouseleave", () => {
+    if (!editModeActive) return;
+    cursorOverMap = false;
+    targetX = 0;
+    targetY = 0;
+    rawDx = Infinity;
+    rawDy = Infinity;
+    isCentred = false;
+    // Clear green state on all active dots immediately.
+    document.querySelectorAll(".edit-mode-toggle").forEach((toggle) => {
+      if (!toggle.classList.contains("active")) return;
+      const dot = toggle.querySelector(".edit-mode-dot");
+      if (!dot) return;
+      const layerId = toggle.dataset.editToggleId || toggle.dataset.layerId || "";
+      updateDotCentreState(toggle, dot, layerId, false);
+    });
+    scheduleTickIfNeeded();
+  });
+})();

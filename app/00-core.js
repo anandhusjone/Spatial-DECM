@@ -734,12 +734,16 @@ function runPendingEditToggleAnimations() {
         scale: [1, 1.16, 1.04],
         duration: 420,
         easing: "easeOutBack",
+        complete() { button.style.transform = ""; },
       });
       anime({
         targets: dot,
         scale: [1, 1.38, 1],
         duration: 440,
         easing: "easeOutExpo",
+        // Clear inline transform so the CSS translate(--dot-x, --dot-y) for the
+        // parallax effect is no longer overridden by anime's residual inline style.
+        complete() { dot.style.transform = ""; },
       });
       return;
     }
@@ -749,12 +753,15 @@ function runPendingEditToggleAnimations() {
       scale: [1.04, 0.94, 1],
       duration: 300,
       easing: "easeOutCubic",
+      complete() { button.style.transform = ""; },
     });
     anime({
       targets: dot,
       scale: [1, 0.72, 1],
       duration: 300,
       easing: "easeOutCubic",
+      // Clear inline transform so CSS transitions can take over cleanly.
+      complete() { dot.style.transform = ""; },
     });
   });
 }

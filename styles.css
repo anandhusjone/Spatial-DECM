@@ -558,13 +558,11 @@ body {
   opacity: 0.35;
   color: var(--logo-stroke-strong);
   overflow: hidden;
-  transition:
-    opacity 0.3s ease,
-    filter 0.3s ease;
+  transition: none;
   cursor: default;
 }
 
-.author-logo-shell:hover {
+.author-logo-shell.morse-lit {
   opacity: 0.88;
   filter: drop-shadow(0 0 6px var(--logo-glow));
 }
@@ -894,17 +892,32 @@ li {
   cursor: pointer;
   transform-origin: center;
   flex-shrink: 0;
+  position: relative;
+  overflow: hidden;
   transition:
     background 160ms ease,
     border-color 160ms ease,
-    transform 160ms ease,
     box-shadow 160ms ease;
+}
+
+/* Ripple disc injected by JS when the parallax dot centres on the map panel.
+   Sized to the dot (11 px), centred in the button, then scaled up by anime.js
+   to fill the button — keeping the green tightly focused around the dot. */
+.edit-mode-ripple {
+  position: absolute;
+  width: 11px;
+  height: 11px;
+  top: 50%;
+  left: 50%;
+  translate: -50% -50%;
+  border-radius: 50%;
+  pointer-events: none;
+  background: radial-gradient(circle, rgba(34, 197, 94, 0.75) 0%, rgba(34, 197, 94, 0.18) 55%, rgba(34, 197, 94, 0) 100%);
 }
 
 .edit-mode-toggle.active {
   background: var(--accent-soft);
   border-color: color-mix(in srgb, var(--accent) 60%, transparent);
-  transform: scale(1.04);
   box-shadow: 0 0 0 6px color-mix(in srgb, var(--accent) 10%, transparent);
 }
 
@@ -915,10 +928,12 @@ li {
   background: var(--muted);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--muted) 22%, transparent);
   transform-origin: center;
+  /* --dot-x / --dot-y driven by cursor position relative to map centre */
+  transform: translate(var(--dot-x, 0px), var(--dot-y, 0px));
   transition:
     background 160ms ease,
     box-shadow 160ms ease,
-    transform 160ms ease;
+    transform 80ms linear;
 }
 
 .edit-mode-toggle.active .edit-mode-dot {
@@ -1625,7 +1640,6 @@ li {
   transition: color 160ms ease, border-color 160ms ease, background 160ms ease, box-shadow 160ms ease;
 }
 
-.basemap-picker:hover .floating-basemap-btn,
 .floating-basemap-btn[aria-expanded="true"] {
   border-color: color-mix(in srgb, var(--accent) 50%, transparent);
   color: var(--accent);
@@ -1995,8 +2009,28 @@ li {
   font: inherit;
 }
 
+.table-row-actions {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
 .table-row-button {
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 7px;
   white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.table-row-locate-btn:hover {
+  color: var(--accent);
+  border-color: var(--accent);
 }
 
 .table-row-delete-btn:not(:disabled):hover {

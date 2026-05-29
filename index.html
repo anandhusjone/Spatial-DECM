@@ -127,7 +127,7 @@
     <input
       id="project-open-file"
       type="file"
-      accept=".sdecm,application/json"
+      accept=".sdecm,.zip,application/json,application/zip"
       hidden
     />
 
@@ -1720,6 +1720,7 @@
     <script src="https://unpkg.com/geotiff@2.1.3/dist-browser/geotiff.js"></script>
     <script src="https://unpkg.com/mathjs@13.0.3/lib/browser/math.js"></script>
     <script src="https://unpkg.com/tokml@0.4.0/tokml.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/animejs/3.2.2/anime.min.js"></script>
     <script src="./app/crs-manager.js"></script>
     <script src="./app/vector-style-manager.js"></script>
@@ -1927,6 +1928,97 @@
           offset:   '-=200'
         });
 
+    }());
+    </script>
+    <!-- ── Morse code blink ── -->
+    <script>
+    (function () {
+      // Standard morse timing units (ms)
+      var DOT      = 120;   // 1 unit
+      var DASH     = 360;   // 3 units
+      var SYM_GAP  = 120;   // 1 unit  – between symbols inside a letter
+      var LTR_GAP  = 360;   // 3 units – between letters
+      var WORD_GAP = 840;   // 7 units – between words
+      var END_PAUSE = 1200; // pause before loop restarts
+
+      // .- -. .- -. -.. .... ..- / ... .- - .... . . ... .- -.
+      var WORDS = [
+        [ [DOT,DASH], [DASH,DOT], [DOT,DASH], [DASH,DOT], [DASH,DOT,DOT], [DOT,DOT,DOT,DOT], [DOT,DOT,DASH] ],
+        [ [DOT,DOT,DOT], [DOT,DASH], [DASH], [DOT,DOT,DOT,DOT], [DOT], [DOT], [DOT,DOT,DOT], [DOT,DASH], [DASH,DOT] ]
+      ];
+
+      // Build flat timeline: array of { start, end } ON-intervals (ms from t=0)
+      var timeline = [];
+      var t = 0;
+      WORDS.forEach(function (word, wi) {
+        word.forEach(function (letter, li) {
+          letter.forEach(function (dur, si) {
+            timeline.push({ start: t, end: t + dur });
+            t += dur;
+            if (si < letter.length - 1) t += SYM_GAP;
+          });
+          if (li < word.length - 1) t += LTR_GAP;
+        });
+        if (wi < WORDS.length - 1) t += WORD_GAP;
+      });
+      var TOTAL = t + END_PAUSE;
+
+      var shell = document.querySelector('.author-logo-shell');
+      if (!shell) return;
+
+      var rafId      = null;
+      var loopStart  = null;   // performance.now() when current loop began
+      var running    = false;
+
+      function tick(now) {
+        if (!running) return;
+        var elapsed = (now - loopStart) % TOTAL;
+        // Check if we are inside any ON-interval
+        var lit = false;
+        for (var i = 0; i < timeline.length; i++) {
+          if (elapsed >= timeline[i].start && elapsed < timeline[i].end) {
+            lit = true;
+            break;
+          }
+        }
+        if (lit) {
+          shell.classList.add('morse-lit');
+        } else {
+          shell.classList.remove('morse-lit');
+        }
+        rafId = requestAnimationFrame(tick);
+      }
+
+      function startMorse() {
+        if (running) return;
+        running   = true;
+        loopStart = performance.now();
+        rafId = requestAnimationFrame(tick);
+      }
+
+      function stopMorse() {
+        running = false;
+        if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
+        shell.classList.remove('morse-lit');
+      }
+
+      var panel = document.querySelector('.brand-block');
+
+      // Blink while cursor is inside the logo panel; pause+lit when directly on the shell
+      if (panel) {
+        panel.addEventListener('mouseenter', startMorse);
+        panel.addEventListener('mouseleave', stopMorse);
+      }
+      shell.addEventListener('mouseenter', function () {
+        running = false;
+        if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
+        shell.classList.add('morse-lit');
+      });
+      shell.addEventListener('mouseleave', function () {
+        startMorse();
+      });
+
+      // Off by default until cursor enters the panel
     }());
     </script>
   </body>

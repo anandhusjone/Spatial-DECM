@@ -1285,22 +1285,34 @@ function renderAttributeTable() {
           <td>${escapeHtml(feature.geometry?.type || "Unknown")}</td>
           ${cells}
           <td>
-            <button
-              class="ghost-button table-row-button"
-              type="button"
-              data-zoom-feature-id="${escapeHtml(feature.id)}"
-            >
-              Locate
-            </button>
-            <button
-              class="ghost-button table-row-button table-row-delete-btn"
-              type="button"
-              data-delete-feature-id="${escapeHtml(feature.id)}"
-              ${isEditMode ? "" : "disabled"}
-              title="${isEditMode ? "Remove this feature" : "Enable editing to remove features"}"
-            >
-              Remove
-            </button>
+            <div class="table-row-actions">
+              <button
+                class="ghost-button table-row-button table-row-locate-btn"
+                type="button"
+                title="Locate feature on map"
+                data-zoom-feature-id="${escapeHtml(feature.id)}"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <circle cx="12" cy="12" r="3"/>
+                  <path d="M12 2v3M12 19v3M2 12h3M19 12h3"/>
+                  <circle cx="12" cy="12" r="9" stroke-dasharray="2 3"/>
+                </svg>
+              </button>
+              <button
+                class="ghost-button table-row-button table-row-delete-btn"
+                type="button"
+                title="${isEditMode ? "Remove this feature" : "Enable editing to remove features"}"
+                data-delete-feature-id="${escapeHtml(feature.id)}"
+                ${isEditMode ? "" : "disabled"}
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <polyline points="3 6 5 6 21 6"/>
+                  <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+                  <path d="M10 11v6M14 11v6"/>
+                  <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+                </svg>
+              </button>
+            </div>
           </td>
         </tr>
       `;

@@ -173,7 +173,9 @@ function serializeProject() {
     version: PROJECT_VERSION,
     savedAt: new Date().toISOString(),
     projectName: projectState.projectName || "",
-    activeEditableLayerId: activeEditableLayerId || "",
+    // Never persist edit mode — restoring it would silently activate a layer on open
+    // without any user input, which is the bug described in the project restore comments.
+    activeEditableLayerId: "",
     themePreference: localStorage.getItem(THEME_STORAGE_KEY) || "system",
     calculatorExpressions: Array.isArray(calculatorExpressions) ? calculatorExpressions : [],
     layers,
@@ -211,7 +213,7 @@ async function saveProjectToDirectory(directoryHandle) {
   updateStatus(`Project saved — ${vectorLayers.length} layer(s) written.`);
 }
 
-// ─── Fallback save: download .sdecm bundle ────────────────────────────────────
+// ─── Fallback save: download .zip (mirrors FSA directory structure) ─────────────
 
 // ─── Live layer rename (FSA workspace only) ───────────────────────────────────
 
@@ -256,28 +258,57 @@ async function renameLayerFile(layerRecord, oldFileName) {
   }
 }
 
-function saveProjectAsFallback() {
+async function saveProjectAsFallback() {
   const manifest = serializeProject();
   const vectorLayers = loadedLayers.filter(
     (lr) => !isRasterLayerRecord(lr) && !isLargeCsvLayerRecord(lr)
   );
 
-  const bundle = { ...manifest, _bundle: true, layerData: {} };
-  vectorLayers.forEach((lr) => {
-    bundle.layerData[buildLayerFileName(lr)] = sanitizeGeoJSONForExport(lr.geojson);
-  });
+  // Build a zip that mirrors the Chrome FSA directory structure:
+  //   <projectName>/
+  //     project.sdecm       ← manifest (same as FSA)
+  //     <layer-id>.geojson  ← one file per vector layer (same as FSA)
+  // This lets Firefox / Safari users get the same multi-file format.
+  const projectName = (projectState.projectName || "project").replace(/[/\\:*?"<>|]/g, "_");
+  const zipName = projectName + ".zip";
 
-  const blob = new Blob([JSON.stringify(bundle, null, 2)], { type: "application/json" });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = PROJECT_MANIFEST_FILENAME;
-  anchor.click();
-  setTimeout(() => URL.revokeObjectURL(url), 10_000);
+  if (typeof JSZip !== "undefined") {
+    const zip = new JSZip();
+    const folder = zip.folder(projectName);
+    vectorLayers.forEach((lr) => {
+      folder.file(buildLayerFileName(lr), serializeLayerToGeoJSON(lr));
+    });
+    folder.file(PROJECT_MANIFEST_FILENAME, JSON.stringify(manifest, null, 2));
 
-  projectState.lastSavedAt = manifest.savedAt;
-  clearProjectDirty();
-  updateStatus(`Project downloaded as ${PROJECT_MANIFEST_FILENAME}.`);
+    const blob = await zip.generateAsync({ type: "blob", compression: "DEFLATE" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = zipName;
+    anchor.click();
+    setTimeout(() => URL.revokeObjectURL(url), 10_000);
+
+    projectState.lastSavedAt = manifest.savedAt;
+    clearProjectDirty();
+    updateStatus(`Project downloaded as ${zipName} — open it to restore your project.`);
+  } else {
+    // JSZip not available: fall back to legacy single-file bundle
+    const bundle = { ...manifest, _bundle: true, layerData: {} };
+    vectorLayers.forEach((lr) => {
+      bundle.layerData[buildLayerFileName(lr)] = sanitizeGeoJSONForExport(lr.geojson);
+    });
+    const blob = new Blob([JSON.stringify(bundle, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = PROJECT_MANIFEST_FILENAME;
+    anchor.click();
+    setTimeout(() => URL.revokeObjectURL(url), 10_000);
+
+    projectState.lastSavedAt = manifest.savedAt;
+    clearProjectDirty();
+    updateStatus(`Project downloaded as ${PROJECT_MANIFEST_FILENAME}.`);
+  }
 }
 
 // ─── NEW PROJECT ──────────────────────────────────────────────────────────────
@@ -443,11 +474,77 @@ async function openProjectFromDirectory(directoryHandle) {
   }
 }
 
-// ─── Open from .sdecm bundle file (fallback browsers) ────────────────────────
+// ─── Open from .zip or legacy .sdecm bundle file (fallback browsers) ───────────
 
 async function openProjectFromFile(file) {
   if (!file) return;
 
+  // ── ZIP format (Firefox/Safari fallback save, or manually zipped FSA export) ──
+  const isZip = file.name.endsWith(".zip") || file.type === "application/zip"
+    || file.type === "application/x-zip-compressed";
+
+  if (isZip && typeof JSZip !== "undefined") {
+    let zip;
+    try {
+      zip = await JSZip.loadAsync(await file.arrayBuffer());
+    } catch (_) {
+      updateStatus("Could not read the zip file.", true);
+      return;
+    }
+
+    // The zip may contain a top-level folder (projectName/) or files at root.
+    // Find project.sdecm wherever it lives.
+    let manifestFile = zip.file(PROJECT_MANIFEST_FILENAME);
+    let prefix = "";
+    if (!manifestFile) {
+      // Search one level deep inside a folder
+      zip.forEach((relativePath, zipEntry) => {
+        if (!manifestFile && relativePath.endsWith("/" + PROJECT_MANIFEST_FILENAME)) {
+          manifestFile = zipEntry;
+          prefix = relativePath.slice(0, relativePath.length - PROJECT_MANIFEST_FILENAME.length);
+        }
+      });
+    }
+
+    if (!manifestFile) {
+      updateStatus(`No ${PROJECT_MANIFEST_FILENAME} found inside the zip.`, true);
+      return;
+    }
+
+    let manifest;
+    try {
+      manifest = JSON.parse(await manifestFile.async("string"));
+    } catch (_) {
+      updateStatus("Could not parse project.sdecm inside the zip.", true);
+      return;
+    }
+
+    if (manifest.version !== PROJECT_VERSION) {
+      updateStatus(`Project version ${manifest.version} may not be fully compatible.`, true);
+    }
+
+    async function resolveGeojson(fileName) {
+      const entry = zip.file(prefix + fileName) || zip.file(fileName);
+      if (!entry) throw new Error(`Layer file "${fileName}" not found in zip.`);
+      return JSON.parse(await entry.async("string"));
+    }
+
+    try {
+      await restoreProjectFromManifest(manifest, resolveGeojson);
+      projectState.directoryHandle = null;
+      projectState.hasWorkspace = true;
+      projectState.lastSavedAt = manifest.savedAt || null;
+      projectState.projectName = manifest.projectName || "";
+      clearProjectDirty();
+      updateProjectBar();
+      updateStatus(`Project opened — ${loadedLayers.length} layer(s) restored.`);
+    } catch (error) {
+      updateStatus(`Project restore failed: ${error.message}`, true);
+    }
+    return;
+  }
+
+  // ── Legacy .sdecm single-file bundle ─────────────────────────────────────────
   let bundle;
   try {
     bundle = JSON.parse(await file.text());
@@ -469,7 +566,6 @@ async function openProjectFromFile(file) {
 
   try {
     await restoreProjectFromManifest(bundle, resolveGeojson);
-    // Fallback: no directory handle — Save will redirect to Save As / Download
     projectState.directoryHandle = null;
     projectState.hasWorkspace = true;
     projectState.lastSavedAt = bundle.savedAt || null;
@@ -542,17 +638,10 @@ async function restoreProjectFromManifest(manifest, resolveGeojson) {
     if (lr.isVisible) lr.layerGroup.addTo(map);
   }
 
-  // Restore active editable layer
-  const preferred = manifest.activeEditableLayerId;
-  const editCandidate =
-    (preferred && loadedLayers.find((lr) => lr.id === preferred && isEditableLayerRecord(lr))) ||
-    loadedLayers.find((lr) => isEditableLayerRecord(lr)) ||
-    null;
-
-  if (editCandidate) {
-    activeEditableLayerId = editCandidate.id;
-    syncEditableWorkspace();
-  }
+  // Edit mode is intentionally NOT restored from the manifest.
+  // activeEditableLayerId is always saved as "" to prevent a layer silently
+  // entering edit mode without user input when a project is opened.
+  // (The user must explicitly click the edit toggle after loading.)
 
   // Fit map to restored layers
   const visibleGroups = loadedLayers.filter((lr) => lr.isVisible).map((lr) => lr.layerGroup);
@@ -700,7 +789,7 @@ function updateProjectBar() {
 
   // ── Compat note ───────────────────────────────────────────────────────────
   const compatHtml = !fsaOk
-    ? `<p class="project-compat-note">Your browser doesn't support folder access — use Download to save a .sdecm bundle and Open to restore it.</p>`
+    ? `<p class="project-compat-note">Your browser doesn't support folder access — use Download to save a .zip project and Open to restore it.</p>`
     : "";
 
   bar.innerHTML = `
@@ -738,7 +827,7 @@ function updateProjectBar() {
 
       <!-- Open -->
       <button id="project-open-btn" class="project-bar-btn" type="button"
-        title="${fsaOk ? "Open a saved project folder" : "Open a .sdecm project file"}"
+        title="${fsaOk ? "Open a saved project folder" : "Open a saved project .zip"}"
         aria-label="Open project">
         <svg viewBox="0 0 24 24" aria-hidden="true">
           <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
@@ -838,7 +927,7 @@ function _syncProjectPopover({
         New project
       </button>
       <button id="project-open-btn-pop" class="project-popover-row" type="button"
-        title="${fsaOk ? "Open a saved project folder" : "Open a .sdecm project file"}">
+        title="${fsaOk ? "Open a saved project folder" : "Open a saved project .zip"}">
         <svg viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
         Open
       </button>
@@ -850,7 +939,7 @@ function _syncProjectPopover({
       </button>
       <button id="project-save-as-btn" class="project-popover-row" type="button"
         title="${canSaveAs
-          ? (fsaOk ? "Choose a different folder and save" : "Download project as .sdecm file")
+          ? (fsaOk ? "Choose a different folder and save" : "Download project as .zip")
           : "Save your project first to enable Save As"}"
         ${!canSaveAs ? "disabled" : ""}>
         <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
