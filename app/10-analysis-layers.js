@@ -3069,12 +3069,13 @@ function renderLayerList() {
     const wrapper = document.createElement("article");
     const isTableSelected = isVectorLayerRecord(layerRecord) &&
       (layerRecord.id === selectedTableLayerId || (!selectedTableLayerId && layerRecord.id === activeEditableLayerId));
-    wrapper.className = `layer-card${isTableSelected ? " table-selected" : ""}`;
+    const isEditable = isEditableLayerRecord(layerRecord) && layerRecord.id === activeEditableLayerId;
+    const selectedStateClass = isEditable ? " selected-edit" : isTableSelected ? " selected-view" : "";
+    wrapper.className = `layer-card${isTableSelected ? " table-selected" : ""}${selectedStateClass}`;
     wrapper.dataset.layerId = layerRecord.id;
     wrapper.title = "Right-click for layer options";
 
     const isVisible = layerRecord.isVisible !== false;
-    const isEditable = isEditableLayerRecord(layerRecord) && layerRecord.id === activeEditableLayerId;
     const canEdit = isEditableLayerRecord(layerRecord);
     const canStyle = isVectorLayerRecord(layerRecord);
     const canRasterStyle = isRasterLayerRecord(layerRecord) && layerRecord.rasterKind === "geotiff";
@@ -3113,6 +3114,8 @@ function renderLayerList() {
           ? "Large-file mode is view and analysis only"
           : "Raster layers cannot be edited";
 
+    const statusClass = isEditable ? "status-orange" : isTableSelected ? "status-teal" : "";
+
     wrapper.innerHTML = `
       <div class='layer-card-header'>
         <div class='layer-card-primary'>
@@ -3123,8 +3126,10 @@ function renderLayerList() {
               <circle cx='4' cy='11.5' r='1.2'/><circle cx='10' cy='11.5' r='1.2'/>
             </svg>
           </button>
-          <span class='layer-visibility-btn-placeholder'></span>
-          <button class='layer-name-button' type='button'>${escapeHtml(layerRecord.name)}</button>
+          <div class='layer-card-title-group'>
+            <button class='layer-name-button' type='button'>${escapeHtml(layerRecord.name)}</button>
+            <span class='layer-card-kind'>${escapeHtml(layerRecord.sourceType || "")}</span>
+          </div>
           <button class='edit-mode-toggle ${isEditable ? "active" : ""}' data-edit-toggle-id='${layerRecord.id}' type='button' aria-pressed='${isEditable}' title='${escapeHtml(editTitle)}' ${canEdit ? "" : "disabled"}>
             <span class='edit-mode-dot'></span>
           </button>
@@ -3132,10 +3137,11 @@ function renderLayerList() {
         <div class='layer-card-meta-row'>
           <span class='layer-meta layer-meta-strong'>${primaryMeta}</span>
           <span class='layer-meta layer-meta-sep'>·</span>
-          <span class='layer-meta'>${escapeHtml(tertiaryMeta)}</span>
+          <span class='layer-meta'>${escapeHtml(secondaryMeta)}</span>
         </div>
+        <div class='layer-card-status ${statusClass}'>${escapeHtml(tertiaryMeta)}</div>
         <div class='layer-opacity-row'>
-          <svg class='layer-opacity-icon' xmlns='http://www.w3.org/2000/svg' width='11' height='11' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round' aria-hidden='true'><circle cx='12' cy='12' r='10'/><path d='M12 2a10 10 0 0 1 0 20'/></svg>
+          <span class='layer-visibility-btn-placeholder'></span>
           <input
             type='range'
             class='layer-opacity-slider'
@@ -3151,14 +3157,8 @@ function renderLayerList() {
     const nameButton = wrapper.querySelector(".layer-name-button");
     const visibilityBtn = document.createElement("button");
     visibilityBtn.type = "button";
-    visibilityBtn.className = `layer-visibility-btn ${isVisible ? "eye-on" : "eye-off"}`;
-    visibilityBtn.title = isVisible ? "Hide layer" : "Show layer";
-    visibilityBtn.setAttribute("aria-label", isVisible ? "Layer visible" : "Layer hidden");
-    visibilityBtn.setAttribute("aria-pressed", String(isVisible));
-    visibilityBtn.innerHTML = isVisible
-      ? `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>`
-      : `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>`;
     wrapper.querySelector(".layer-visibility-btn-placeholder").replaceWith(visibilityBtn);
+    updateVisibilityEye(visibilityBtn, isVisible);
     const editButton = wrapper.querySelector(".edit-mode-toggle");
 
     nameButton.addEventListener("click", () => {
@@ -3169,15 +3169,12 @@ function renderLayerList() {
     });
     visibilityBtn.addEventListener("click", () => {
       runLayerCardAction(layerRecord, "toggle-visibility");
-      // Update this button directly — toggleLayer does not call renderLayerList
+      // Sync eye icon — also sync slider if visibility was forced off/on externally
       const nowVisible = layerRecord.isVisible !== false;
-      visibilityBtn.className = `layer-visibility-btn ${nowVisible ? "eye-on" : "eye-off"}`;
-      visibilityBtn.title = nowVisible ? "Hide layer" : "Show layer";
-      visibilityBtn.setAttribute("aria-label", nowVisible ? "Layer visible" : "Layer hidden");
-      visibilityBtn.setAttribute("aria-pressed", String(nowVisible));
-      visibilityBtn.innerHTML = nowVisible
-        ? `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>`
-        : `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>`;
+      updateVisibilityEye(visibilityBtn, nowVisible);
+      if (!nowVisible && opacitySlider && Number(opacitySlider.value) > 0) {
+        // keep slider where it is; just reflect hidden state in eye
+      }
     });
     if (canEdit) {
       editButton.addEventListener("click", () => runLayerCardAction(layerRecord, "toggle-edit"));
@@ -3185,9 +3182,20 @@ function renderLayerList() {
     // All other actions (zoom, style, filter, export, remove…) are accessed via the right-click context menu
     wrapper.addEventListener("contextmenu", (event) => openLayerContextMenu(event, layerRecord));
 
-    // Opacity slider
+    // Opacity slider + integrated visibility toggle
     const opacitySlider = wrapper.querySelector(".layer-opacity-slider");
     const opacityValue  = wrapper.querySelector(".layer-opacity-value");
+
+    function updateVisibilityEye(btn, visible) {
+      btn.className = `layer-visibility-btn ${visible ? "eye-on" : "eye-off"}`;
+      btn.title = visible ? "Hide layer" : "Show layer";
+      btn.setAttribute("aria-label", visible ? "Layer visible" : "Layer hidden");
+      btn.setAttribute("aria-pressed", String(visible));
+      btn.innerHTML = visible
+        ? `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>`
+        : `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>`;
+    }
+
     if (opacitySlider) {
       // Initialise track fill on mount
       opacitySlider.style.setProperty("--pct", opacitySlider.value);
@@ -3197,6 +3205,15 @@ function renderLayerList() {
         opacityValue.textContent = `${pct}%`;
         opacitySlider.style.setProperty("--pct", pct);
         applyLayerOpacity(layerRecord);
+        // Auto-toggle visibility based on slider hitting/leaving zero
+        const nowVisible = layerRecord.isVisible !== false;
+        if (pct === 0 && nowVisible) {
+          runLayerCardAction(layerRecord, "toggle-visibility");
+          updateVisibilityEye(visibilityBtn, false);
+        } else if (pct > 0 && !nowVisible) {
+          runLayerCardAction(layerRecord, "toggle-visibility");
+          updateVisibilityEye(visibilityBtn, true);
+        }
         if (typeof onProjectDirty === "function") onProjectDirty();
       });
       // Prevent drag-to-reorder from triggering while using slider
@@ -3204,46 +3221,9 @@ function renderLayerList() {
       opacitySlider.addEventListener("pointerdown", (e) => e.stopPropagation());
     }
 
-    // Drag-to-reorder: make the whole card draggable; handle triggers it
+    // Drag-to-reorder: pointer-based live sort (attached once per card via initLayerDrag)
     const dragHandle = wrapper.querySelector(".layer-drag-handle");
-    dragHandle.addEventListener("mousedown", () => { wrapper.draggable = true; });
-    dragHandle.addEventListener("mouseleave", () => { if (!wrapper.classList.contains("dragging")) wrapper.draggable = false; });
-    wrapper.addEventListener("dragstart", (e) => {
-      isDraggingLayer = true;
-      wrapper.classList.add("dragging");
-      e.dataTransfer.effectAllowed = "move";
-      e.dataTransfer.setData("text/plain", layerRecord.id);
-    });
-    wrapper.addEventListener("dragend", () => {
-      isDraggingLayer = false;
-      dragDepth = 0; // reset any accumulated dragenter counts from the layer reorder drag
-      updateGlobalDropOverlay(false);
-      wrapper.draggable = false;
-      wrapper.classList.remove("dragging");
-      document.querySelectorAll(".layer-card.drag-over").forEach((el) => el.classList.remove("drag-over"));
-      applyLayerOrderFromDOM();
-    });
-    wrapper.addEventListener("dragover", (e) => {
-      e.preventDefault();
-      e.dataTransfer.dropEffect = "move";
-      if (!wrapper.classList.contains("dragging")) wrapper.classList.add("drag-over");
-    });
-    wrapper.addEventListener("dragleave", () => wrapper.classList.remove("drag-over"));
-    wrapper.addEventListener("drop", (e) => {
-      e.preventDefault();
-      wrapper.classList.remove("drag-over");
-      const draggedId = e.dataTransfer.getData("text/plain");
-      const draggedEl = layerList.querySelector(`[data-layer-id="${CSS.escape(draggedId)}"]`);
-      if (!draggedEl || draggedEl === wrapper) return;
-      // Insert before or after depending on pointer position
-      const rect = wrapper.getBoundingClientRect();
-      const after = e.clientY > rect.top + rect.height / 2;
-      if (after) {
-        wrapper.after(draggedEl);
-      } else {
-        wrapper.before(draggedEl);
-      }
-    });
+    dragHandle.addEventListener("pointerdown", (e) => initLayerDrag(e, wrapper));
 
     layerList.appendChild(wrapper);
     nextAnimatedLayerIds.add(layerRecord.id);
@@ -3256,6 +3236,147 @@ function renderLayerList() {
   nextAnimatedLayerIds.forEach((id) => animatedLayerIds.add(id));
   animateLayerEntries(newlyAddedCards);
   runPendingEditToggleAnimations();
+}
+
+// ── Live pointer-drag sort ──────────────────────────────────────────────────
+function initLayerDrag(e, card) {
+  // Only respond to primary button / single touch
+  if (e.button !== undefined && e.button !== 0) return;
+  e.preventDefault();
+  e.stopPropagation();
+
+  const list        = card.closest("[data-layer-list]") || card.parentElement;
+  const cardRect    = card.getBoundingClientRect();
+  const listRect    = list.getBoundingClientRect();
+  const startY      = e.clientY;
+  const cardH       = cardRect.height;
+  const GAP         = parseInt(getComputedStyle(list).gap) || 10;
+
+  // Ghost: visual clone that follows the cursor
+  const ghost = card.cloneNode(true);
+  ghost.style.cssText = `
+    position: fixed;
+    left: ${cardRect.left}px;
+    top:  ${cardRect.top}px;
+    width: ${cardRect.width}px;
+    height: ${cardH}px;
+    pointer-events: none;
+    z-index: 9999;
+    transition: box-shadow 120ms ease;
+    border-radius: inherit;
+    opacity: 0.92;
+  `;
+  ghost.classList.add("drag-ghost");
+  document.body.appendChild(ghost);
+
+  // Placeholder: keeps the original slot occupied so the list height stays stable
+  const placeholder = document.createElement("div");
+  placeholder.className = "drag-placeholder";
+  placeholder.style.height = cardH + "px";
+  card.replaceWith(placeholder);
+
+  // Mark state
+  isDraggingLayer = true;
+  updateGlobalDropOverlay(false); // don't show file-drop overlay during layer sort
+
+  // Collect sibling cards (excluding placeholder) with stable original positions
+  function getSiblings() {
+    return Array.from(list.querySelectorAll(".layer-card[data-layer-id]"));
+  }
+
+  let lastInsertBefore = null; // the card we're about to insert before (null = end)
+
+  function getInsertionTarget(pointerY) {
+    const siblings = getSiblings();
+    for (const sib of siblings) {
+      const r = sib.getBoundingClientRect();
+      const mid = r.top + r.height / 2;
+      if (pointerY < mid) return sib;
+    }
+    return null; // insert at end
+  }
+
+  function applyShifts(insertBefore) {
+    const siblings = getSiblings();
+    const placeholderRect = placeholder.getBoundingClientRect();
+
+    for (const sib of siblings) {
+      const sibRect = sib.getBoundingClientRect();
+      // Would this sibling shift to make room?
+      // Rule: siblings that sit between the placeholder's current slot and the
+      // new insertion point need to shift by ±(cardH + GAP).
+      let shift = 0;
+
+      if (insertBefore === null) {
+        // inserting at end — shift down any card currently above placeholder's final slot
+        // No shift needed; placeholder is already being moved in DOM
+      }
+
+      // Reset first, then we re-apply below
+      sib.style.transition = "transform 200ms cubic-bezier(0.25,0.46,0.45,0.94)";
+      sib.style.transform  = "";
+    }
+
+    // Re-read positions after reset (use rAF to avoid thrash)
+    requestAnimationFrame(() => {
+      if (!isDraggingLayer) return;
+      // Move placeholder to new insertion point
+      if (insertBefore) {
+        list.insertBefore(placeholder, insertBefore);
+      } else {
+        list.appendChild(placeholder);
+      }
+    });
+  }
+
+  function onPointerMove(ev) {
+    const dy = ev.clientY - startY;
+    // Move ghost
+    ghost.style.top = (cardRect.top + dy) + "px";
+    ghost.style.boxShadow = "0 12px 40px rgba(0,0,0,0.45), 0 2px 8px rgba(0,0,0,0.3)";
+
+    const target = getInsertionTarget(ev.clientY);
+    if (target !== lastInsertBefore) {
+      lastInsertBefore = target;
+      applyShifts(target);
+    }
+  }
+
+  function onPointerUp(ev) {
+    window.removeEventListener("pointermove", onPointerMove);
+    window.removeEventListener("pointerup",   onPointerUp);
+    window.removeEventListener("pointercancel", onPointerUp);
+
+    // Animate ghost to placeholder position
+    const destRect = placeholder.getBoundingClientRect();
+    ghost.style.transition = "top 180ms cubic-bezier(0.25,0.46,0.45,0.94), left 180ms, opacity 180ms, box-shadow 180ms";
+    ghost.style.top     = destRect.top  + "px";
+    ghost.style.left    = destRect.left + "px";
+    ghost.style.opacity = "0";
+    ghost.style.boxShadow = "none";
+
+    // Clear all sibling transforms immediately so they snap cleanly
+    list.querySelectorAll(".layer-card[data-layer-id]").forEach(sib => {
+      sib.style.transition = "";
+      sib.style.transform  = "";
+    });
+
+    setTimeout(() => {
+      ghost.remove();
+      // Replace placeholder with the real card (transforms already cleared above)
+      card.style.transform  = "";
+      card.style.transition = "";
+      placeholder.replaceWith(card);
+
+      isDraggingLayer = false;
+      dragDepth = 0;
+      applyLayerOrderFromDOM();
+    }, 180);
+  }
+
+  window.addEventListener("pointermove",   onPointerMove, { passive: true });
+  window.addEventListener("pointerup",     onPointerUp);
+  window.addEventListener("pointercancel", onPointerUp);
 }
 
 function applyLayerOrderFromDOM() {
