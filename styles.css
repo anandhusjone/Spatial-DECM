@@ -778,7 +778,70 @@ li {
   padding: 8px 10px;
   transform-origin: center top;
   position: relative;
+  transition: border-color 180ms ease, box-shadow 180ms ease, background 180ms ease;
 }
+
+/* ── Layer card selection states ─────────────────────────────── */
+.layer-card.selected-view {
+  border-color: rgba(29, 158, 117, 0.38);
+  box-shadow: 0 0 0 2.5px rgba(29, 158, 117, 0.13), 0 2px 14px rgba(0, 0, 0, 0.12);
+  background: color-mix(in srgb, rgba(29, 158, 117, 0.07) 100%, var(--card));
+}
+.layer-card.selected-edit {
+  border-color: rgba(242, 110, 34, 0.40);
+  box-shadow: 0 0 0 2.5px rgba(242, 110, 34, 0.13), 0 2px 14px rgba(0, 0, 0, 0.12);
+  background: color-mix(in srgb, rgba(242, 110, 34, 0.06) 100%, var(--card));
+}
+
+/* ── Layer card avatar ───────────────────────────────────────── */
+.layer-card-avatar {
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  font-size: 13px;
+}
+.layer-card-avatar.avatar-teal {
+  background: rgba(29, 158, 117, 0.13);
+  color: #0F9070;
+  border: 0.5px solid rgba(29, 158, 117, 0.32);
+}
+.layer-card-avatar.avatar-orange {
+  background: rgba(242, 110, 34, 0.13);
+  color: var(--accent);
+  border: 0.5px solid rgba(242, 110, 34, 0.32);
+}
+.layer-card-avatar.avatar-muted {
+  background: var(--surface);
+  color: var(--muted);
+  border: 0.5px solid var(--border);
+}
+:root[data-theme="light"] .layer-card-avatar.avatar-teal  { color: #0A7055; }
+:root[data-theme="light"] .layer-card-avatar.avatar-orange { color: #c4520e; }
+
+/* ── Layer card kind subtitle ────────────────────────────────── */
+.layer-card-kind {
+  font-size: 0.72rem;
+  color: var(--muted);
+  margin-top: 1px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── Layer card status line ──────────────────────────────────── */
+.layer-card-status {
+  font-size: 0.72rem;
+  color: var(--muted);
+  padding: 2px 0 4px;
+}
+.layer-card-status.status-teal   { color: #0F9070; }
+.layer-card-status.status-orange { color: var(--accent); }
+:root[data-theme="light"] .layer-card-status.status-teal   { color: #0A7055; }
+:root[data-theme="light"] .layer-card-status.status-orange { color: #c4520e; }
 
 .layer-card-header {
   display: grid;
@@ -787,9 +850,17 @@ li {
 
 .layer-card-primary {
   display: grid;
-  grid-template-columns: auto auto minmax(0, 1fr) auto;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 6px;
+}
+
+/* Name + kind stacked group */
+.layer-card-title-group {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
 }
 
 /* Inline meta row: primary + tertiary on one line */
@@ -919,54 +990,64 @@ li {
 
 .layer-drag-handle:active {
   cursor: grabbing;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
 }
 
-.layer-card.dragging {
-  opacity: 0.45;
-  box-shadow: 0 8px 28px rgba(0,0,0,0.22);
-  transform: scale(1.02);
-  transition: opacity 120ms ease, transform 120ms ease;
+/* Ghost: the floating clone that follows the pointer */
+.drag-ghost {
+  box-shadow: 0 12px 40px rgba(0,0,0,0.45), 0 2px 8px rgba(0,0,0,0.3);
+  border: 1px solid rgba(242,110,34,0.35);
+  background: var(--card);
+  cursor: grabbing !important;
+  will-change: top;
 }
 
-.layer-card.drag-over {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 2px var(--accent-soft, rgba(29,183,166,0.18));
+/* Placeholder: invisible slot that holds space while dragging */
+.drag-placeholder {
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
+  border: 1.5px dashed color-mix(in srgb, var(--accent) 40%, transparent);
+  transition: height 200ms cubic-bezier(0.25,0.46,0.45,0.94);
+  pointer-events: none;
+}
+
+/* Siblings animate via inline transform (set by JS) */
+.layer-card {
+  will-change: transform;
 }
 
 /* ── Layer visibility eye button ────────────────────────────── */
 .layer-visibility-btn {
-  width: 26px;
-  height: 26px;
-  border-radius: 7px;
-  border: 1px solid var(--border);
+  width: 20px;
+  height: 20px;
+  border: none;
   background: transparent;
+  padding: 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
   flex-shrink: 0;
-  transition: color 180ms ease, border-color 180ms ease, background 180ms ease, box-shadow 180ms ease;
+  transition: color 180ms ease, opacity 180ms ease;
 }
 
 .layer-visibility-btn.eye-on {
   color: #3fcf8e;
-  border-color: rgba(63, 207, 142, 0.45);
-  background: rgba(63, 207, 142, 0.08);
-  box-shadow: 0 0 0 3px rgba(63, 207, 142, 0.12);
+  opacity: 0.75;
 }
 
 .layer-visibility-btn.eye-on:hover {
-  background: rgba(63, 207, 142, 0.14);
+  opacity: 1;
 }
 
 .layer-visibility-btn.eye-off {
   color: #e05a5a;
-  border-color: rgba(224, 90, 90, 0.38);
+  opacity: 0.85;
 }
 
 .layer-visibility-btn.eye-off:hover {
-  background: rgba(224, 90, 90, 0.1);
-  box-shadow: 0 0 0 4px rgba(224, 90, 90, 0.12);
+  opacity: 1;
 }
 
 .layer-visibility-toggle {
@@ -1430,11 +1511,7 @@ li {
   border-color: transparent;
 }
 
-/* Highlight the selected-for-table layer card */
-.layer-card.table-selected {
-  box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--accent) 50%, transparent),
-              0 2px 12px rgba(0,0,0,0.12);
-}
+/* Selection feedback is now handled by .selected-view and .selected-edit */
 
 .info-panel ul {
   padding-left: 18px;
@@ -4640,10 +4717,9 @@ details[open] .advanced-style-summary::before {
   opacity: 1;
 }
 
+/* .layer-opacity-icon is no longer rendered; eye btn takes its place */
 .layer-opacity-icon {
-  flex-shrink: 0;
-  color: var(--muted);
-  opacity: 0.7;
+  display: none;
 }
 
 .layer-opacity-slider {
