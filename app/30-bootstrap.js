@@ -872,7 +872,18 @@ applyAttributeTableVisibility();
                             .getPropertyValue("--accent").trim() || "#F26E22";
       const accentGlow  = "0 0 0 6px var(--accent-soft)";
 
-      anime.remove(dot);
+      // Cancel any in-progress bounce animation on both toggle and dot.
+      // The rising-edge bounce animates toggle (scale) and dot (scale +
+      // colour). If the cursor leaves centre before those finish, anime.remove()
+      // kills them before their complete() callbacks can clear the inline
+      // transform — leaving the dot stuck at whatever scale value anime had
+      // written mid-flight. Clearing the transform here (synchronously, after
+      // remove()) guarantees the CSS translate(--dot-x, --dot-y) parallax is
+      // never overridden by a stale inline style.
+      anime.remove([toggle, dot]);
+      toggle.style.transform = "";
+      dot.style.transform    = "";
+
       anime({
         targets:         dot,
         backgroundColor: [{ value: accentColor, duration: 260, easing: "easeOutCubic" }],
