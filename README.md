@@ -151,6 +151,10 @@ CSV files are parsed in a background worker so the UI stays responsive during im
 
 ## Viewshed Analysis
 
+<p align="center">
+  <img src="src/viewshed_demo.gif" width="800" alt="Watershed Demo">
+</p>
+
 Viewshed analysis computes which areas of the terrain are visible from a chosen observer point. Click the **Viewshed** toolbar button to open the panel.
 
 **Elevation sources**
