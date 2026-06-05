@@ -8,9 +8,9 @@ const helpPages = {
 <hr/>
 <p><strong>Quick start:</strong></p>
 <ol>
-  <li>Drag a file onto the map — or click <strong>Import</strong> in the toolbar.</li>
+  <li>Drag a file onto the map — or click the <strong>+</strong> button in the Layers panel.</li>
   <li>Your data appears as a layer in the left panel.</li>
-  <li>Click the three-dot menu on a layer to style, filter, analyse, or export it.</li>
+  <li>Right-click a layer card to style, filter, analyse, export, zoom, or remove it.</li>
 </ol>
 <hr/>
 <p><strong>New here?</strong> Download our sample dataset to explore the app straight away.</p>
@@ -28,15 +28,17 @@ const helpPages = {
   <li><strong>KML</strong> (.kml)</li>
   <li><strong>GPX</strong> (.gpx) — GPS tracks and waypoints</li>
   <li><strong>CSV</strong> (.csv) — must have columns named lat/lon, lat/lng, or x/y — or a single combined column (e.g. <em>Coordinates</em>) containing values like <code>8.42, 77.04</code></li>
-  <li><strong>GeoTIFF</strong> (.tif, .tiff) — satellite imagery or elevation raster. GeoTIFF layers are raster layers: they have no attribute table, but you can style them via <strong>Raster Style</strong> and use them as elevation sources for Viewshed and Watershed.</li>
+  <li><strong>GeoTIFF</strong> (.tif, .tiff) — satellite imagery or elevation raster. GeoTIFF layers are raster layers: they have no attribute table, but you can style them via <strong>Raster Style</strong> and use them as elevation sources for Viewshed, Watershed, and Peaks &amp; Hills.</li>
 </ul>
 <p><strong>Each layer card lets you:</strong></p>
 <ul>
   <li>Toggle visibility with the eye icon</li>
-  <li>Click the layer name to rename it in place</li>
-  <li>Open the three-dot menu for more actions — see below</li>
+  <li>Drag the handle to reorder layers</li>
+  <li>Use the opacity slider to fade the layer</li>
+  <li>Click the layer name to select it in the attribute table and zoom to it</li>
+  <li>Right-click the card for more actions — see below</li>
 </ul>
-<p><strong>Three-dot menu actions (vary by layer type):</strong></p>
+<p><strong>Right-click menu actions (vary by layer type):</strong></p>
 <ul>
   <li><strong>Zoom</strong> — fly the map to fit the layer's extent</li>
   <li><strong>Enable / Disable edit mode</strong> — turns on the draw toolbar for vector layers</li>
@@ -53,16 +55,16 @@ const helpPages = {
 <p>There are three ways to add data to the map:</p>
 <ul>
   <li><strong>Drag and drop</strong> — drag your file from your computer and drop it anywhere on the map. A blue overlay appears to confirm the drop zone.</li>
-  <li><strong>File picker</strong> — click the <strong>Import</strong> button in the toolbar, then choose <strong>Browse files</strong> and select your file.</li>
-  <li><strong>Create a new empty layer</strong> — click <strong>Import</strong>, then choose <strong>Create new layer</strong>. Enter a name and pick a geometry type (Point, Line, or Polygon). The new layer appears in the panel ready for drawing.</li>
+  <li><strong>File picker</strong> — click the <strong>+</strong> button in the Layers panel, then choose <strong>Browse files</strong> and select your file.</li>
+  <li><strong>Create a new empty layer</strong> — click the <strong>+</strong> button in the Layers panel, then choose <strong>Create new layer</strong>. Enter a name and pick a geometry type (Point, Line, or Polygon). The new layer appears in the panel ready for drawing.</li>
 </ul>
 <p>For <strong>shapefiles</strong>, you need to open all the sidecar files together (.shp, .dbf, .shx — and optionally .prj and .cpg). Select or drag all of them at once and the app groups them automatically. A single .zip containing the shapefile also works.</p>
 <p>For <strong>large CSV files</strong> (tens of thousands of rows), the app automatically switches to a fast preview mode so the browser does not slow down. You will see a label on the layer card telling you how many points are shown.</p>
-<p>For <strong>GeoTIFF files</strong>, the layer appears as a raster card. It has no attribute table, but you can style it with <strong>Raster Style</strong> and use it as an elevation source in Viewshed or Watershed.</p>
+<p>For <strong>GeoTIFF files</strong>, the layer appears as a raster card. It has no attribute table, but you can style it with <strong>Raster Style</strong> and use it as an elevation source in terrain tools.</p>
 <p>After import, the map automatically zooms to fit your new layer.</p>`,
 
   symbology: `<h3>Styling Your Layer</h3>
-<p>To change how a layer looks, open its three-dot menu and choose <strong>Style</strong>.</p>
+<p>To change how a layer looks, right-click its layer card and choose <strong>Style</strong>.</p>
 <p>The Style panel has two tabs: <strong>Styling</strong> and <strong>Labeling</strong>.</p>
 <hr/>
 <p><strong>Styling tab — choose a mode:</strong></p>
@@ -94,10 +96,10 @@ const helpPages = {
 <p>You can draw new map features or edit existing ones on any vector layer.</p>
 <hr/>
 <p><strong>Step 1 — Enable Edit Mode</strong></p>
-<p>Open a layer's three-dot menu and choose <strong>Enable edit mode</strong>. The draw toolbar appears on the map. Layers with more than 5 000 features cannot be edited.</p>
+<p>Click the edit toggle on a layer card, or right-click the layer and choose <strong>Enable edit mode</strong>. The draw toolbar appears on the map. Layers with more than 5 000 features cannot be edited.</p>
 <hr/>
 <p><strong>Step 2 — Create a new empty layer (optional)</strong></p>
-<p>Click <strong>Import</strong> in the toolbar, then choose <strong>Create new layer</strong>. Enter a name and choose Point, Line, or Polygon. Then enable edit mode on that new layer to start drawing.</p>
+<p>Click the <strong>+</strong> button in the Layers panel, then choose <strong>Create new layer</strong>. Enter a name and choose Point, Line, or Polygon. Then enable edit mode on that new layer to start drawing.</p>
 <hr/>
 <p><strong>Step 3 — Draw</strong></p>
 <ul>
@@ -118,11 +120,11 @@ const helpPages = {
 <p>Use the <strong>Undo</strong> and <strong>Redo</strong> buttons in the attribute table toolbar to step back or forward through your changes (up to 50 steps).</p>
 <hr/>
 <p><strong>Rename a layer</strong></p>
-<p>Click the layer name in the attribute table header, or click the pencil icon next to the layer card name, to rename it. The new name is saved immediately.</p>`,
+<p>Click the layer name in the attribute table header, then use the rename control. The new name is saved immediately.</p>`,
 
   "attribute-table": `<h3>Attribute Table</h3>
 <p>The attribute table shows the data behind any vector layer — like a spreadsheet linked to the map.</p>
-<p><strong>To open it:</strong> click the <strong>Table</strong> button in the toolbar, then click the table icon on a layer card to load that layer's data.</p>
+<p><strong>To open it:</strong> show the table with the floating table button if it is hidden, then click a vector layer name in the layer panel to load that layer's data.</p>
 <hr/>
 <p><strong>What you can do in the table:</strong></p>
 <ul>
@@ -139,13 +141,14 @@ const helpPages = {
 
   "field-calculator": `<h3>Field Calculator</h3>
 <p>The Field Calculator lets you fill a field automatically using a formula — similar to a spreadsheet formula that runs on every row at once.</p>
-<p><strong>To open it:</strong> click <strong>Field Calculator</strong> in the attribute table toolbar, or choose it from a layer's three-dot menu.</p>
+<p><strong>To open it:</strong> select a vector layer in the attribute table, enable editing, then click <strong>Field Calculator</strong> in the attribute table toolbar.</p>
 <hr/>
 <p><strong>How to use it:</strong></p>
 <ol>
-  <li>Write an expression in the editor. Click a field name in the left panel or a function name in the right panel to insert it.</li>
-  <li>Pick a <strong>preview feature</strong> from the dropdown and click <strong>Preview</strong> to check the result for that one row before applying to all.</li>
-  <li>Choose where to write the result: a <strong>new field</strong> (type a name) or an <strong>existing field</strong> (select from the list).</li>
+  <li>Choose whether to <strong>Create new field</strong> or <strong>Update existing field</strong>.</li>
+  <li>Write an expression in the editor. Click a geometry variable, field name, or function name in the reference panel to insert it.</li>
+  <li>Pick a <strong>preview feature</strong> from the dropdown. The preview updates automatically as you type.</li>
+  <li>Choose the target field: type a new field name or select the existing field to update.</li>
   <li>Click <strong>Apply to layer</strong> — the formula runs on every feature and writes the values immediately.</li>
 </ol>
 <hr/>
@@ -154,22 +157,22 @@ const helpPages = {
   <li><code>"population" / "area"</code> — divide two fields</li>
   <li><code>upper("name")</code> — convert text to uppercase</li>
   <li><code>"first_name" || " " || "last_name"</code> — join two text fields with a space</li>
-  <li><code>AREA()</code> — polygon area in square metres (polygon layers only)</li>
-  <li><code>LENGTH()</code> — line length in metres (line layers only)</li>
-  <li><code>LATITUDE()</code> / <code>LONGITUDE()</code> — point coordinates (point layers only)</li>
+  <li><code>$area</code> — polygon area in square metres (polygon layers only)</li>
+  <li><code>$length</code> — line length in metres (line layers only)</li>
+  <li><code>$x</code> / <code>$y</code> — point longitude / latitude (point layers only)</li>
   <li><code>CASE WHEN "status" = 'active' THEN 1 ELSE 0 END</code> — conditional value</li>
 </ul>
 <hr/>
 <p><strong>Saving and sharing expressions:</strong></p>
 <ul>
-  <li>Click <strong>Save Expression</strong> to store a formula with a name.</li>
+  <li>Click <strong>Save</strong> to store a formula with a name.</li>
   <li>Select a saved expression and click <strong>Load</strong> to recall it, or <strong>Delete</strong> to remove it.</li>
   <li>Click the <strong>⋯</strong> menu to <strong>Export all</strong> saved expressions as a .json file, or <strong>Import</strong> a previously exported library to restore them.</li>
 </ul>`,
 
   interpolation: `<h3>Interpolation</h3>
 <p>Interpolation fills in a smooth, continuous surface from scattered point measurements — for example, turning weather station readings into a full temperature map.</p>
-<p><strong>To use it:</strong> open a point layer's three-dot menu and choose <strong>Interpolate</strong>.</p>
+<p><strong>To use it:</strong> right-click a point layer and choose <strong>Interpolate</strong>.</p>
 <hr/>
 <p><strong>Settings:</strong></p>
 <ul>
@@ -181,34 +184,42 @@ const helpPages = {
       <li><em>Nearest Neighbor</em> — assigns each area the value of the closest point. Creates a sharp patchwork look.</li>
     </ul>
   </li>
-  <li><strong>Radius</strong> — how far (in metres) each point influences the surface around it.</li>
+  <li><strong>Sample scope</strong> — use only currently visible / filtered features, or all point features in the layer.</li>
+  <li><strong>Clip extent</strong> — limit the output to the point convex hull or the full bounding box.</li>
+  <li><strong>Influence radius</strong> — how far (in metres) each point influences the surface around it.</li>
   <li><strong>Cell size</strong> — output resolution in metres. Smaller = finer detail but slower to compute.</li>
+  <li><strong>Power</strong> — IDW distance falloff. Higher values make nearby points dominate more strongly.</li>
+  <li><strong>Minimum nearby samples</strong> — minimum number of points required before a cell receives a value.</li>
   <li><strong>Color ramp</strong> — the colour scheme for the result (e.g. Terrain-Glow, Sunset-Heat).</li>
   <li><strong>Opacity</strong> — how transparent the result overlay is on the map.</li>
 </ul>
 <p>The summary card shows how many points will be used and the output grid size before you apply.</p>
-<p>Click <strong>Apply</strong> to create the surface — it appears as a coloured raster layer, with a legend in the bottom-right corner of the map.</p>
-<p>Click <strong>Clear</strong> to remove it.</p>`,
+<p>Click <strong>Apply Interpolation</strong> to create the surface — it appears as a coloured raster layer, with a legend in the bottom-right corner of the map.</p>
+<p>Click <strong>Clear Surface</strong> to remove the derived interpolation layer for the source layer.</p>`,
 
   heatmap: `<h3>Heatmap</h3>
 <p>A heatmap shows where points are densely clustered. Hot colours (red, yellow) mean many points close together; cool colours (blue) mean few.</p>
-<p><strong>To use it:</strong> open a point layer's three-dot menu and choose <strong>Heatmap</strong>.</p>
+<p><strong>To use it:</strong> right-click a point layer and choose <strong>Heatmap</strong>.</p>
 <hr/>
 <p><strong>Settings:</strong></p>
 <ul>
   <li><strong>Weight field</strong> — optionally scale each point by a numeric attribute (e.g. incident severity). Leave as "Feature count" for equal weight.</li>
+  <li><strong>Sample scope</strong> — use currently visible / filtered points, or all points in the layer.</li>
+  <li><strong>Clip extent</strong> — limit the output to the point convex hull or the full bounding box.</li>
   <li><strong>Radius</strong> — how far each point's heat spreads outward (in metres).</li>
   <li><strong>Cell size</strong> — output grid resolution in metres. Smaller = finer detail but slower.</li>
+  <li><strong>Minimum nearby samples</strong> — minimum point count needed before a cell is drawn.</li>
   <li><strong>Intensity</strong> — scale the overall heat values up or down.</li>
+  <li><strong>Exact cell size</strong> — bypasses automatic grid resizing. Use only for smaller areas because it can create very large rasters.</li>
   <li><strong>Color ramp</strong> — colour scheme for the output.</li>
   <li><strong>Opacity</strong> — transparency of the heatmap overlay on the map.</li>
 </ul>
-<p>Click <strong>Apply</strong> — a heatmap overlay layer is created on the map.</p>
-<p>Click <strong>Clear</strong> to remove it.</p>`,
+<p>Click <strong>Apply Heatmap</strong> — a derived heatmap raster layer is created on the map.</p>
+<p>Click <strong>Clear Heatmap</strong> to remove the derived heatmap layer for the source layer.</p>`,
 
   export: `<h3>Exporting Data</h3>
 <p>You can save any vector layer to a file on your computer.</p>
-<p><strong>To export:</strong> open the layer's three-dot menu and choose <strong>Export</strong>.</p>
+<p><strong>To export:</strong> right-click the layer card and choose <strong>Export</strong>.</p>
 <hr/>
 <p><strong>Available formats:</strong></p>
 <ul>
@@ -219,11 +230,11 @@ const helpPages = {
 <p>Edit the filename if you want, choose a format, and click <strong>Export</strong>. The file downloads immediately.</p>
 <p><em>Note: styles, labels, and filters are not saved inside the exported file — only the geometry and attribute data.</em></p>`,
 
-  viewshed: `<h3>Viewshed Analysis</h3>
-<p>Viewshed analysis shows which areas on the ground are <strong>visible</strong> from a chosen observer point — accounting for terrain elevation. Visible areas are highlighted in green on the map.</p>
+  viewshed: `<h3>Viewshed / Diffraction Loss Modelling</h3>
+<p>Viewshed / Diffraction Loss Modelling shows which areas on the ground are <strong>visible</strong> from a chosen observer point and can model radio diffraction loss across terrain. Visible areas are highlighted in green on the map.</p>
 <hr/>
 <p><strong>Step 1 — Open the panel</strong></p>
-<p>Click <strong>Viewshed</strong> button in the toolbar (eye-with-rays icon). A floating panel appears. You can drag it by its title bar to reposition it on the map.</p>
+<p>Click <strong>Viewshed / Diffraction Loss Modelling</strong> button in the toolbar (eye-with-rays icon). A floating panel appears. You can drag it by its title bar to reposition it on the map.</p>
 <hr/>
 <p><strong>Step 2 — Choose an elevation source</strong></p>
 <p>There are two options:</p>
@@ -232,29 +243,43 @@ const helpPages = {
   <li><strong>Global DEM</strong> — tick <em>Use Global DEM</em>. The app fetches Terrarium RGB-encoded elevation tiles from AWS Open Data automatically. No file needed. A radius is required (5 000 – 50 000 m). Resolution is approximately 30 m/pixel at zoom 12.</li>
 </ul>
 <hr/>
-<p><strong>Step 3 — Set the observer</strong></p>
-<p>Click <strong>Pick from Map</strong>, then click the location on the map where the observer stands. A green marker and a dashed radius circle appear to confirm. You can also type coordinates directly. Drag the panel out of the way if needed.</p>
+<p><strong>Step 3 — Set the observer source</strong></p>
+<p>Choose <strong>Single Point</strong> to click <strong>Pick from Map</strong>, paste coordinates, and run one viewshed. Choose <strong>Point Layer</strong> to run a batch viewshed from a loaded point vector layer such as GeoJSON, zipped Shapefile, KML, GPX, or CSV-derived points.</p>
+<p>In <strong>Point Layer</strong> mode, select the observer layer, then optionally select a numeric <strong>Radius Field</strong>. If no radius field is selected, enter one <strong>Common Radius</strong> used by all points.</p>
 <hr/>
 <p><strong>Step 4 — Configure parameters</strong></p>
 <ul>
   <li><strong>Observer height</strong> — height of the observer's eyes above the ground (metres). Use 1.7 m for a standing person, 20 m for a tower, etc.</li>
   <li><strong>Target height</strong> — minimum height of a target above ground for it to count as visible (metres). Leave at 0 to test ground-level visibility.</li>
-  <li><strong>Max radius</strong> — only analyse terrain within this distance from the observer (metres). Set to 0 for unlimited extent (local DEM only). Required when using the Global DEM.</li>
+  <li><strong>Max radius</strong> — single-point mode only. Analyse terrain within this distance from the observer (metres). Set to 0 for unlimited extent (local DEM only). Required when using the Global DEM.</li>
+  <li><strong>Radius field / Common radius</strong> — point-layer mode only. Use a numeric field for per-point radii, or leave the field empty and enter one radius for all points.</li>
   <li><strong>Earth curvature &amp; refraction</strong> — tick this for long-distance analyses (&gt; 5 km). Accounts for the curvature of the Earth and atmospheric bending of light, which would otherwise make distant terrain appear more visible than it really is.</li>
 </ul>
 <hr/>
-<p><strong>Step 5 — Run the analysis</strong></p>
-<p>Click <strong>Compute Viewshed</strong>. A progress bar appears while tiles are fetched and the algorithm runs. The result appears as a new <strong>Viewshed</strong> layer in the layer panel.</p>
+<p><strong>Step 5 — Optional KED diffraction mode</strong></p>
+<p>Enable <strong>Multiple Knife-Edge Diffraction</strong> to model radio received signal over the same DEM area. The Run button changes to <strong>Run KED</strong>. KED currently uses <strong>Single Point</strong> observer mode because it creates a raster output.</p>
+<ul>
+  <li><strong>Frequency</strong> — radio frequency in MHz.</li>
+  <li><strong>Tx Power</strong> — transmitter power in dBm. Allowed range: -30 to 60 dBm.</li>
+  <li><strong>Rx Threshold</strong> — minimum usable received signal in dBm. Allowed range: -150 to 0 dBm.</li>
+  <li><strong>Ray Samples</strong> — terrain samples checked along each observer-to-cell path. Higher values are more detailed but slower.</li>
+</ul>
+<p>KED creates a separate <strong>KED Diffraction Loss</strong> raster layer. It does not replace or combine with the normal <strong>Viewshed</strong> layer.</p>
+<hr/>
+<p><strong>Step 6 — Run the analysis</strong></p>
+<p>Click <strong>Run Viewshed</strong> for line-of-sight output, or <strong>Run KED</strong> when KED mode is enabled. A progress bar appears while tiles are fetched and the algorithm runs. The result appears as a new layer in the layer panel.</p>
 <hr/>
 <p><strong>Reading the result</strong></p>
 <ul>
   <li><strong>Green areas</strong> — terrain visible from the observer point.</li>
+  <li><strong>Point-layer results</strong> — each visible polygon part is stored as a separate feature, and every observer is stored as its own <code>view_point</code> feature with <code>observer_id</code> and <code>radius_m</code> attributes.</li>
   <li><strong>Transparent areas</strong> — terrain hidden from view (behind hills or ridges).</li>
+  <li><strong>KED raster colors</strong> — fully opaque red means the highest received signal. Weaker / higher-loss cells fade toward transparency.</li>
 </ul>
-<p>A legend in the bottom-right corner labels the two categories. Running the analysis again replaces the previous Viewshed layer.</p>`,
+<p>The map legend updates for the active result layer. Running the analysis again replaces the previous result of the same type.</p>`,
 
   watershed: `<h3>Watershed &amp; Channel Extraction</h3>
-<p>The Watershed tool delineates drainage basins and extracts stream channel networks from an elevation model. It uses D8 flow routing and Strahler stream ordering to produce a <strong>basin raster</strong> and a <strong>stream channel vector layer</strong>.</p>
+<p>The Watershed tool delineates drainage basins and extracts stream channel networks from an elevation model. It uses D8 flow routing and Strahler stream ordering to produce a <strong>Watershed Basin</strong> polygon layer and a <strong>Stream Channels</strong> line layer.</p>
 <hr/>
 <p><strong>Step 1 — Open the panel</strong></p>
 <p>Click the <strong>Watershed</strong> button in the toolbar (water-drop icon). A floating panel appears. You can drag it anywhere on the map.</p>
@@ -262,28 +287,61 @@ const helpPages = {
 <p><strong>Step 2 — Choose an elevation source</strong></p>
 <ul>
   <li><strong>Local GeoTIFF</strong> — import a single-band DEM (SRTM, ALOS, etc.) and select it from the dropdown.</li>
-  <li><strong>Global DEM</strong> — fetches Terrarium RGB tiles from AWS automatically (~30 m resolution). Set an analysis radius (5 000 – 50 000 m).</li>
+  <li><strong>Global DEM</strong> — fetches Terrarium RGB tiles from AWS automatically (~30 m resolution). Set a fetch radius from 5 to 200 km.</li>
 </ul>
 <hr/>
 <p><strong>Step 3 — Set delineation input</strong></p>
 <ul>
   <li><strong>Pour Point</strong> — click <em>Pick from Map</em>, then click the outlet point of the basin (e.g. the mouth of a river). The tool traces all terrain draining to that point.</li>
-  <li><strong>Draw Polygon</strong> — click <em>Draw Polygon</em> on the map to sketch a boundary polygon. The tool analyses all terrain and drainage <em>within</em> that polygon, regardless of where water flows to. Useful when you want to study a specific region rather than trace upstream from a single outlet.</li>
+  <li><strong>Polygon</strong> — click <em>Draw polygon</em> to sketch a boundary polygon. The tool analyses terrain and drainage within that polygon.</li>
+  <li><strong>Canvas</strong> — uses the current visible map extent. Pan and zoom to the area first. Canvas mode automatically uses Global DEM.</li>
 </ul>
 <hr/>
 <p><strong>Step 4 — Configure parameters</strong></p>
 <ul>
   <li><strong>Channel Threshold</strong> — minimum number of upstream cells required for a cell to be classified as a channel. Lower values produce denser networks; higher values show only major rivers.</li>
-  <li><strong>Delineate sub-basins</strong> — tick to split the watershed into smaller sub-basins coloured by drainage order. Set the <em>Minimum sub-basin area</em> to filter out tiny basins.</li>
+  <li><strong>Min Slope</strong> — Wang &amp; Liu sink-fill gradient across flat areas. Lower values preserve flats; higher values force stronger drainage.</li>
+  <li><strong>Sub-basins</strong> — tick to split the watershed into smaller sub-basin polygons at channel confluences.</li>
 </ul>
 <hr/>
 <p><strong>Step 5 — Run the analysis</strong></p>
 <p>Click <strong>Run Watershed</strong>. The tool runs pit-filling, flow direction, flow accumulation, and stream ordering, then adds two layers:</p>
 <ul>
-  <li><strong>Watershed Basins</strong> — a raster overlay colour-coded from blue (headwaters) to purple (larger basins).</li>
+  <li><strong>Watershed Basin</strong> — a polygon layer for the delineated basin, with optional sub-basin polygons.</li>
   <li><strong>Stream Channels</strong> — a vector layer of stream lines. Line weight and colour reflect stream order (thicker = larger, higher-order stream).</li>
 </ul>
 <p>A <strong>Cancel</strong> button appears during processing — click it to stop a long-running analysis.</p>`,
+
+  peaks: `<h3>Peaks &amp; Hills</h3>
+<p>The Peaks &amp; Hills tool finds terrain summits from a DEM and creates a point layer named <strong>Peaks &amp; Hills</strong>. It uses one summit-detection workflow and automatically labels stronger summits as Peaks and lower-relief summits as Hills.</p>
+<hr/>
+<p><strong>Step 1 — Open the panel</strong></p>
+<p>Click the Peaks &amp; Hills mountain button in the map toolbar. A floating panel appears.</p>
+<hr/>
+<p><strong>Step 2 — Choose an elevation source</strong></p>
+<ul>
+  <li><strong>Local DEM</strong> — select a loaded single-band GeoTIFF elevation raster.</li>
+  <li><strong>Global DEM</strong> — fetches Terrarium elevation tiles around a picked centre point. A radius is required.</li>
+</ul>
+<hr/>
+<p><strong>Step 3 — Choose the area</strong></p>
+<ul>
+  <li><strong>Canvas</strong> — analyses the current visible map area for Local DEM.</li>
+  <li><strong>Radius</strong> — pick or paste a centre point and set a radius in metres. Global DEM always uses this mode.</li>
+</ul>
+<hr/>
+<p><strong>Detection settings</strong></p>
+<ul>
+  <li><strong>Search radius</strong> — pixel radius used to decide whether a cell is the highest point nearby. Increase it to reduce duplicate nearby summits.</li>
+  <li><strong>Minimum relief</strong> — minimum height difference, in metres, between a summit and surrounding lower terrain.</li>
+  <li><strong>Smoothing</strong> — optional pixel radius used to reduce DEM noise before detection.</li>
+  <li><strong>Peak cutoff</strong> — summits with relief at or above this value are labelled <strong>Peak</strong>; lower accepted summits are labelled <strong>Hill</strong>.</li>
+  <li><strong>Minimum elevation</strong> — optional lower elevation cutoff.</li>
+  <li><strong>Max results</strong> — caps the number of returned features.</li>
+</ul>
+<p>The algorithm is plateau-tolerant: a flat summit can produce one representative point, but nearby duplicate detections are suppressed. Results are ranked by local relief first, then elevation.</p>
+<hr/>
+<p>Click <strong>Run Peaks &amp; Hills</strong>. Results are ranked by local relief and added as point features with elevation and relief attributes.</p>`,
 
   projects: `<h3>Projects</h3>
 <p>Projects let you save your entire workspace — all layers, styles, labels, filters, and the map position — and reopen it later exactly as you left it.</p>
@@ -309,7 +367,7 @@ const helpPages = {
 
   filter: `<h3>Layer Filter</h3>
 <p>The Filter tool lets you hide features that do not match a set of conditions, so you can focus on just the data you care about. Filtered-out features are hidden on the map and excluded from analysis tools like Interpolation and Heatmap.</p>
-<p><strong>To open it:</strong> open a vector layer's three-dot menu and choose <strong>Filter</strong>.</p>
+<p><strong>To open it:</strong> right-click a vector layer and choose <strong>Filter</strong>.</p>
 <hr/>
 <p><strong>How to use it:</strong></p>
 <ol>
@@ -323,7 +381,7 @@ const helpPages = {
 
   "raster-style": `<h3>Raster Symbology</h3>
 <p>Raster Symbology lets you control how a GeoTIFF layer is displayed — its colour scheme, value range, brightness, contrast, and opacity. You can also inspect the file's metadata here.</p>
-<p><strong>To open it:</strong> open a GeoTIFF layer's three-dot menu and choose <strong>Raster Style</strong>.</p>
+<p><strong>To open it:</strong> right-click a GeoTIFF layer and choose <strong>Raster Style</strong>.</p>
 <hr/>
 <p><strong>Render type:</strong></p>
 <ul>

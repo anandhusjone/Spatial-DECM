@@ -72,7 +72,7 @@ One-click device location · Accuracy circle · Auto-zoom to position
 
 **📊 Spatial Functions**
 
-`AREA()` · `LENGTH()` · `PERIMETER()` · `LATITUDE()` · `LONGITUDE()` · `CENTROID_LAT()` · `CENTROID_LON()`
+`$area` · `$length` · `$x` · `$y` · `intersects()` · `within()` · `overlay_intersects()` · `overlay_nearest()` · `aggregate()`
 
 <br/>
 
@@ -84,7 +84,7 @@ Advanced point / line / polygon symbols · Categorized · Graduated · Rule-base
 
 **🔥 Analysis**
 
-Heatmap · IDW interpolation · Gaussian Kernel interpolation · Nearest Neighbor interpolation · Viewshed (line-of-sight) · **Watershed & Channel Extraction**
+Heatmap · IDW interpolation · Gaussian Kernel interpolation · Nearest Neighbor interpolation · Viewshed / Diffraction Loss Modelling · **Watershed & Channel Extraction** · Peaks & Hills
 
 <br/>
 
@@ -114,7 +114,7 @@ GeoJSON · KML · Zipped Shapefile
 | `.zip` | Zipped shapefile bundle — must include `.shp`, `.shx`, `.dbf` |
 | `.shp` + sidecars | Loose shapefile import — select or drag the matching `.shp`, `.dbf`, `.shx`, `.prj`, and `.cpg` files together |
 | `.csv` | Lat/lon columns (`lat`, `lon`, `lng`, `x`, `y`) **or** a combined column (`coordinates`, `coords`, `location`, `point`, etc.) with values like `"8.42, 77.04"`. Delimiter auto-detected: comma, semicolon, tab, or pipe. Large files (> 50 000 points) use streaming mode — see [Large CSV files](#large-csv-files). |
-| `.tif` / `.tiff` | GeoTIFF raster with tiled browser rendering, raster metadata, pixel sampling, NoData handling, and WGS84 / Web Mercator / WGS84 UTM alignment. Also used as DEM input for viewshed and watershed analysis. |
+| `.tif` / `.tiff` | GeoTIFF raster with tiled browser rendering, raster metadata, pixel sampling, NoData handling, and WGS84 / Web Mercator / WGS84 UTM alignment. Also used as DEM input for viewshed, watershed, and peak / hill detection. |
 
 <br/>
 
@@ -122,13 +122,23 @@ GeoJSON · KML · Zipped Shapefile
 
 ```
 1. Open the app
-2. Drag and drop your file
-3. View, edit, or analyze
-4. Export when done
+2. Drag and drop your file, or click the + button in the Layers panel
+3. Use layer cards to view, edit, style, filter, analyze, or export
+4. Save a project or export a layer when done
 ```
 
 > All processing happens **client-side**. Your data never leaves your browser.  
 > Large datasets may run slower due to browser memory limits.
+
+<br/>
+
+## Layer workflow
+
+- **Add data** — drag files onto the map, or click the **+** button in the Layers panel and choose *Browse files*.
+- **Create data** — click **+** → *Create new layer*, choose Point / Line / Polygon, then enable edit mode on the new layer.
+- **Layer cards** — use the eye button for visibility, the opacity slider for transparency, the drag handle for ordering, and the layer name to select / zoom the layer.
+- **Layer actions** — right-click a layer card to zoom, enable / disable editing, style, raster-style, filter, interpolate, heatmap, export, or remove it. Available actions depend on the layer type.
+- **Attribute table** — click a vector layer name to load it in the table. Enable editing with the pencil button before editing cells, deleting rows, or using the field calculator.
 
 <br/>
 
@@ -143,19 +153,59 @@ CSV files are parsed in a background worker so the UI stays responsive during im
 | > 250 000 | **Grid preview** | One polygon per map tile (zoom 8) showing the point count for that cell |
 
 - The layer card shows the total point count from the file, not just the displayed points.
-- A separate **analysis sample** of up to 50 000 points (reservoir-sampled) is kept in memory for heatmap, interpolation, and field-calculator operations.
+- A separate **analysis sample** of up to 50 000 points (reservoir-sampled) is kept in memory for heatmap and interpolation.
 - Filtering and query-builder rules are skipped for large CSV layers (filters apply to the full dataset on re-import instead).
 - Export reflects the display mode (`sample-preview` or `grid-preview`); re-import the original file and keep it under 50 000 points to export the full dataset.
 
 <br/>
 
-## Viewshed Analysis
+## Point Interpolation
+
+Point interpolation creates a derived raster surface from numeric point attributes. Right-click an eligible point layer and choose **Interpolate**.
+
+**Controls**
+
+- **Value field** — numeric attribute to interpolate.
+- **Method** — Inverse Distance Weighted, Gaussian Kernel, or Nearest Neighbor.
+- **Sample scope** — use visible / filtered features only, or all point features.
+- **Clip extent** — output grid clipped to the convex hull or bounding box.
+- **Influence radius** — maximum point influence distance in metres.
+- **Cell size** — output raster resolution in metres.
+- **Power** — IDW distance falloff; higher values make nearby points dominate.
+- **Minimum nearby samples** — cells need this many nearby points before a value is drawn.
+- **Color ramp / Opacity** — display styling for the generated raster.
+
+Click **Apply Interpolation** to create the raster layer, or **Clear Surface** to remove the derived surface for that source layer.
+
+<br/>
+
+## Point Heatmap
+
+Point heatmap creates a density or weighted-density raster from point features. Right-click an eligible point layer and choose **Heatmap**.
+
+**Controls**
+
+- **Weight field** — optional numeric weight; leave as feature count for equal weighting.
+- **Sample scope** — use visible / filtered features only, or all point features.
+- **Clip extent** — output grid clipped to the convex hull or bounding box.
+- **Radius** — heat spread distance in metres.
+- **Cell size** — output raster resolution in metres.
+- **Minimum nearby samples** — cells need this many nearby points before they are drawn.
+- **Intensity exponent** — scales heat values up or down.
+- **Exact cell size** — bypasses auto-resizing; useful only for smaller areas.
+- **Color ramp / Opacity** — display styling for the generated raster.
+
+Click **Apply Heatmap** to create the raster layer, or **Clear Heatmap** to remove the derived heatmap for that source layer.
+
+<br/>
+
+## Viewshed / Diffraction Loss Modelling
 
 <p align="center">
   <img src="src/viewshed_demo.gif" width="800" alt="Watershed Demo">
 </p>
 
-Viewshed analysis computes which areas of the terrain are visible from a chosen observer point. Click the **Viewshed** toolbar button to open the panel.
+Viewshed / Diffraction Loss Modelling computes which areas of the terrain are visible from one observer point or from every point in a loaded point vector layer. It can also model KED radio diffraction loss over the same DEM extent for a single observer. Click the **Viewshed / Diffraction Loss Modelling** toolbar button to open the panel.
 
 **Elevation sources**
 
@@ -168,7 +218,25 @@ When *Use Global DEM* is ticked the app fetches RGB-encoded Terrarium elevation 
 
 **Algorithm** — Radial Bresenham line-of-sight sweep (`app/60-viewshed.js`). For every pixel on the DEM perimeter a ray is cast from the observer outward. A cell is marked visible if its angle of elevation from the observer equals or exceeds the running maximum angle seen on that ray so far. Optional Earth-curvature and atmospheric-refraction correction uses k = 0.13.
 
-**Output** — A raster overlay layer named *Viewshed* is added to the map. Visible cells are painted in semi-transparent green (`rgba(0, 255, 120, 0.45)`). The map legend shows two swatches (Visible / Not visible).
+**Observer sources**
+
+- **Single Point** — pick a point on the map or paste `lat, lng`, then set **Max Radius** for that observer. A radius of `0` means unlimited for a local DEM; Global DEM requires a radius.
+- **Point Layer** — select a loaded point vector layer such as GeoJSON, zipped Shapefile, KML, GPX, or CSV-derived points. Optionally select a numeric **Radius Field** to use a different radius for each point. If no radius field is selected, enter one **Common Radius** used by all points.
+
+**Output** — A vector overlay layer named *Viewshed* is added to the map. Visible terrain is painted in semi-transparent green (`rgba(0, 255, 120, 0.45)`). In point-layer mode, each visible polygon part is stored as its own feature with `observer_id`, `radius_m`, and source-point fields, and each observer is stored as a separate `view_point` feature. Invalid points or invalid radius values are skipped and reported in the status message.
+
+**KED diffraction mode** — Toggle *Multiple Knife-Edge Diffraction* in the Viewshed / Diffraction Loss Modelling panel, then keep the same elevation source, observer point, observer height, and maximum radius settings used for viewshed. Click *Run KED* to create a separate raster layer named *KED Diffraction Loss*.
+
+**KED inputs**
+
+- **Frequency (MHz)** — radio frequency used for free-space path loss and diffraction calculations.
+- **Tx Power (dBm)** — transmitter power at the observer point. Accepted range: -30 to 60 dBm.
+- **Rx Threshold (dBm)** — minimum usable received signal. Accepted range: -150 to 0 dBm.
+- **Ray Samples** — number of elevation samples along each observer-to-cell terrain profile. Higher values capture terrain obstruction in more detail but take longer.
+
+**KED output** — The tool estimates received signal strength with `Rx (dBm) = Tx (dBm) - free-space path loss - Epstein-Peterson diffraction loss`. It is not mathematically combined with the normal *Viewshed* layer.
+
+**KED colors** — The KED raster uses a red opacity ramp: the highest received value is fully opaque red, and weaker / higher-loss cells become progressively more transparent.
 
 <br/>
 
@@ -188,7 +256,7 @@ Watershed analysis delineates upstream drainage basins and extracts stream chann
 |------|-------------|
 | **Pour Point** | Click a point on the map; it snaps to the nearest stream cell and delineates the full upstream basin |
 | **Polygon** | Draw a freehand polygon; channels and sub-basins are clipped to that extent |
-| **Canvas** | Uses the current map viewport as the analysis extent (Global DEM only) |
+| **Canvas** | Uses the current map viewport as the analysis extent and automatically uses Global DEM |
 
 **Parameters**
 
@@ -199,6 +267,34 @@ Watershed analysis delineates upstream drainage basins and extracts stream chann
 **Algorithm** — D8 flow direction with Wang & Liu sink-fill, GPU-accelerated via WebGL 1 where available (falls back to CPU workers automatically). Flow accumulation, basin delineation, and sub-basin extraction each run in dedicated Web Workers to keep the UI responsive. A cancel button terminates all active workers immediately.
 
 **Output** — Two vector layers are added to the map: *Stream Channels* (polylines) and *Watershed Basin* (polygon, with optional sub-basin polygons).
+
+<br/>
+
+## Peaks & Hills
+
+Peaks & Hills detects terrain summits from a DEM and creates a point layer named *Peaks & Hills*. It uses one summit-detection workflow, then automatically labels stronger local-relief features as *Peak* and lower-relief features as *Hill*.
+
+**Elevation sources** — Local DEM uses a loaded GeoTIFF raster. Global DEM fetches Terrarium elevation tiles around a picked centre point and radius.
+
+**AOI modes**
+
+| Mode | How it works |
+|------|-------------|
+| **Canvas** | Uses the current visible map area for Local DEM |
+| **Radius** | Uses a picked or pasted centre point and radius in metres; required for Global DEM |
+
+**Parameters**
+
+- **Search radius** — pixel radius used to decide whether a cell is the highest point nearby.
+- **Minimum relief** — minimum local height difference between a summit and surrounding lower terrain.
+- **Smoothing** — optional pixel radius used to reduce noisy DEM spikes before detection.
+- **Peak cutoff** — accepted summits with relief at or above this value are labelled *Peak*; the rest are labelled *Hill*.
+- **Minimum elevation** — optional lower cutoff before detection.
+- **Max results** — caps the ranked output.
+
+**Algorithm** — The tool optionally smooths the DEM, finds plateau-tolerant local maxima, measures local relief against surrounding lower terrain, filters by threshold, and applies non-maximum suppression so nearby duplicates collapse to one representative summit. Results are ranked by local relief first, then elevation.
+
+**Output** — A vector point layer with `rank`, `kind`, `elevation_m`, `relief_m`, and `label` fields. Peak markers use coral triangles; hill markers use teal domes.
 
 <br/>
 
@@ -232,8 +328,9 @@ Projects are saved as `.sdecm` bundles (a JSON manifest + per-layer GeoJSON file
 | `app/30-bootstrap.js` | App initialisation, file-drop handling, drag-and-drop wiring |
 | `app/40-project.js` | Project save/load (`.sdecm` bundle or FSA folder), auto-save, dirty-state tracking |
 | `app/50-map-tools.js` | GPS locate, distance/area measure tool |
-| `app/60-viewshed.js` | Viewshed analysis panel, tile fetching, Bresenham line-of-sight algorithm |
+| `app/60-viewshed.js` | Viewshed / Diffraction Loss Modelling panel, Bresenham line-of-sight algorithm, KED diffraction raster generation |
 | `app/70-watershed.js` | Watershed & channel extraction — D8 flow direction, Wang & Liu sink-fill, WebGL GPU acceleration, Web Worker offloading |
+| `app/80-peaks.js` | Peak & hill detection panel, plateau-tolerant summit detection, non-maximum suppression |
 | `app/99-help-content.js` | In-app help text |
 | `app/calculator/` | Field calculator — tokenizer, parser, AST, evaluator, built-in function catalog |
 | `app/crs-manager.js` | CRS detection, Proj4 reprojection, UTM zone helpers |

@@ -1,5 +1,5 @@
 /* =============================================================
-   60-viewshed.js — Live Viewshed Analysis Panel
+   60-viewshed.js — Viewshed / Diffraction Loss Modelling Panel
    Depends on globals from 00-core.js and 10-analysis-layers.js:
      map, canAnimate, anime, updateStatus, loadedLayers,
      addLayerRecord, removeLayer, isRasterLayerRecord,
@@ -12,7 +12,8 @@
 
   // ── Constants ────────────────────────────────────────────────
 
-  const VIEWSHED_LAYER_NAME = "Viewshed";
+  const VIEWSHED_LAYER_NAME     = "Viewshed";
+  const KED_LAYER_NAME          = "KED Diffraction Loss";
   const EARTH_RADIUS_M = 6371000;
   const REFRACTION_K   = 0.13;
 
@@ -40,8 +41,16 @@
   const obsHeightInp  = document.getElementById("vs-observer-height");
   const tgtHeightInp  = document.getElementById("vs-target-height");
   const maxRadiusInp  = document.getElementById("vs-max-radius");
+  const singleRadiusWrap = document.getElementById("vs-single-radius-wrap");
   const radiusHint    = document.getElementById("vs-radius-hint");
   const curvatureChk  = document.getElementById("vs-curvature");
+  const observerSrcCtrl = document.getElementById("vs-observer-source-ctrl");
+  const singleObserverWrap = document.getElementById("vs-single-observer-wrap");
+  const pointLayerWrap = document.getElementById("vs-point-layer-wrap");
+  const pointLayerSelect = document.getElementById("vs-point-layer-select");
+  const radiusFieldSelect = document.getElementById("vs-radius-field-select");
+  const batchRadiusInp = document.getElementById("vs-batch-radius");
+  const batchRadiusWrap = document.getElementById("vs-batch-radius-wrap");
   const pickBtn       = document.getElementById("vs-pick-btn");
   const coordsDisplay = document.getElementById("vs-coords-display");
   const clearObsBtn   = document.getElementById("vs-clear-obs-btn");
@@ -50,6 +59,14 @@
   const progressLabel = document.getElementById("vs-progress-label");
   const applyBtn      = document.getElementById("vs-apply-btn");
 
+  // KED refs
+  const kedToggleBtn  = document.getElementById("vs-ked-toggle");
+  const kedParams     = document.getElementById("vs-ked-params");
+  const kedFreqInp    = document.getElementById("vs-ked-frequency");
+  const kedTxPwrInp   = document.getElementById("vs-ked-tx-power");
+  const kedRxThreshInp= document.getElementById("vs-ked-rx-thresh");
+  const kedSamplesInp = document.getElementById("vs-ked-samples");
+
   // ── State ─────────────────────────────────────────────────────
 
   let observerLatLng = null;  // L.LatLng | null
@@ -57,14 +74,41 @@
   let radiusCircle   = null;  // L.Circle | null — shows max-radius ring
   let isPicking      = false;
   let isComputing    = false;
+  let kedEnabled     = false;
+  let observerSource  = "single"; // "single" | "layer"
 
   // ── Panel open / close ────────────────────────────────────────
+
+  function clampPanelToViewport() {
+    if (!panel || panel.hidden) return;
+    const margin = 12;
+    const rect = panel.getBoundingClientRect();
+    const maxLeft = Math.max(margin, window.innerWidth - rect.width - margin);
+    const maxTop = Math.max(margin, window.innerHeight - rect.height - margin);
+    const left = Math.min(Math.max(margin, rect.left), maxLeft);
+    const top = Math.min(Math.max(margin, rect.top), maxTop);
+    panel.style.left = `${left}px`;
+    panel.style.top = `${top}px`;
+    panel.style.right = "auto";
+    panel.style.bottom = "auto";
+  }
+
+  function clampPanelAfterLayout() {
+    requestAnimationFrame(() => requestAnimationFrame(clampPanelToViewport));
+  }
 
   function openPanel() {
     panel.hidden = false;
     viewshedBtn.setAttribute("aria-pressed", "true");
     viewshedBtn.classList.add("vs-active");
+    const wt = document.getElementById("watershed-panel");
+    if (wt && !wt.hidden) document.getElementById("watershed-panel-close-btn")?.click();
+    const pk = document.getElementById("peaks-panel");
+    if (pk && !pk.hidden) document.getElementById("peaks-panel-close-btn")?.click();
     populateDemSelect();
+    populatePointLayerSelect();
+    populateRadiusFieldSelect();
+    clampPanelAfterLayout();
 
     if (typeof canAnimate !== "undefined" && canAnimate) {
       anime.remove(panel);
@@ -116,6 +160,21 @@
 
   closeBtn.addEventListener("click", closePanel);
 
+  // ── KED toggle ────────────────────────────────────────────────
+
+  function setKedEnabled(active) {
+    kedEnabled = active;
+    kedToggleBtn.setAttribute("aria-checked", active ? "true" : "false");
+    kedParams.classList.toggle("is-open", active);
+    applyBtn.textContent = active ? "Run KED" : "Run Viewshed";
+    applyBtn.classList.toggle("vs-apply-ked", active);
+    clampPanelAfterLayout();
+  }
+
+  kedToggleBtn.addEventListener("click", () => {
+    setKedEnabled(!kedEnabled);
+  });
+
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape" && !panel.hidden) {
       if (isPicking) {
@@ -125,6 +184,8 @@
       }
     }
   });
+
+  window.addEventListener("resize", clampPanelAfterLayout);
 
   // ── Drag-to-move ──────────────────────────────────────────────
 
@@ -147,10 +208,11 @@
 
     function moveDrag(clientX, clientY) {
       if (!dragging) return;
-      const maxLeft = window.innerWidth  - panel.offsetWidth;
-      const maxTop  = window.innerHeight - panel.offsetHeight;
-      panel.style.left = Math.min(Math.max(0, startLeft + (clientX - startX)), maxLeft) + "px";
-      panel.style.top  = Math.min(Math.max(0, startTop  + (clientY - startY)), maxTop)  + "px";
+      const margin = 12;
+      const maxLeft = Math.max(margin, window.innerWidth  - panel.offsetWidth - margin);
+      const maxTop  = Math.max(margin, window.innerHeight - panel.offsetHeight - margin);
+      panel.style.left = Math.min(Math.max(margin, startLeft + (clientX - startX)), maxLeft) + "px";
+      panel.style.top  = Math.min(Math.max(margin, startTop  + (clientY - startY)), maxTop)  + "px";
     }
 
     function endDrag() {
@@ -209,12 +271,84 @@
         .join("");
   }
 
+  function getPointFeatures(layerRecord) {
+    return (layerRecord?.geojson?.features || []).filter((feature) => {
+      const type = feature?.geometry?.type;
+      return type === "Point" || type === "MultiPoint";
+    });
+  }
+
+  function getPointLayerRecords() {
+    return loadedLayers.filter((lr) => {
+      if (!lr || lr.kind !== "vector" || !lr.geojson) return false;
+      const kind = typeof getLayerGeometryKind === "function" ? getLayerGeometryKind(lr) : lr.geometryKind;
+      return (kind === "point" || kind === "mixed" || kind === "unknown") && getPointFeatures(lr).length > 0;
+    });
+  }
+
+  function populatePointLayerSelect() {
+    if (!pointLayerSelect) return;
+    const currentValue = pointLayerSelect.value;
+    const eligible = getPointLayerRecords();
+    pointLayerSelect.innerHTML =
+      '<option value="">— select point layer —</option>' +
+      eligible
+        .map((lr) => {
+          const count = getPointFeatures(lr).length;
+          const selected = lr.id === currentValue ? " selected" : "";
+          return `<option value="${lr.id}"${selected}>${escapeHtml(lr.name)} (${count})</option>`;
+        })
+        .join("");
+    if (currentValue && !eligible.some((lr) => lr.id === currentValue)) {
+      pointLayerSelect.value = "";
+    }
+    populateRadiusFieldSelect();
+  }
+
+  function populateRadiusFieldSelect() {
+    if (!radiusFieldSelect || !pointLayerSelect) return;
+    const currentValue = radiusFieldSelect.value;
+    const layerRecord = loadedLayers.find((lr) => lr.id === pointLayerSelect.value);
+    const numericFields = [];
+    const fields = typeof collectFieldNamesFromGeoJSON === "function"
+      ? collectFieldNamesFromGeoJSON(layerRecord?.geojson)
+      : [];
+    const pointFeatures = getPointFeatures(layerRecord);
+
+    fields.forEach((field) => {
+      const hasNumericRadius = pointFeatures.some((feature) => {
+        const value = Number(feature?.properties?.[field]);
+        return Number.isFinite(value) && value > 0;
+      });
+      if (hasNumericRadius) numericFields.push(field);
+    });
+
+    radiusFieldSelect.innerHTML =
+      '<option value="">Use one radius for all points</option>' +
+      numericFields
+        .map((field) => `<option value="${escapeHtml(field)}"${field === currentValue ? " selected" : ""}>${escapeHtml(field)}</option>`)
+        .join("");
+    if (currentValue && !numericFields.includes(currentValue)) {
+      radiusFieldSelect.value = "";
+    }
+    updateBatchRadiusVisibility();
+  }
+
+  function updateBatchRadiusVisibility() {
+    if (!batchRadiusWrap || !radiusFieldSelect) return;
+    batchRadiusWrap.hidden = Boolean(radiusFieldSelect.value);
+    clampPanelAfterLayout();
+  }
+
   // Re-populate whenever the layer list DOM changes (addLayerRecord /
   // removeLayer both call renderLayerList which mutates #layer-list).
   const layerListEl = document.getElementById("layer-list");
   if (layerListEl) {
     new MutationObserver(() => {
-      if (!panel.hidden) populateDemSelect();
+      if (!panel.hidden) {
+        populateDemSelect();
+        populatePointLayerSelect();
+      }
     }).observe(layerListEl, { childList: true, subtree: false });
   }
 
@@ -240,6 +374,33 @@
       }
     }
   });
+
+  function setObserverSource(source) {
+    observerSource = source === "layer" ? "layer" : "single";
+    observerSrcCtrl?.querySelectorAll(".wt-dem-card")
+      .forEach((btn) => btn.classList.toggle("is-active", btn.dataset.observerSource === observerSource));
+
+    if (singleObserverWrap) singleObserverWrap.hidden = observerSource !== "single";
+    if (singleRadiusWrap) singleRadiusWrap.hidden = observerSource !== "single";
+    if (pointLayerWrap) pointLayerWrap.classList.toggle("is-open", observerSource === "layer");
+    if (observerSource === "layer") {
+      if (isPicking) cancelPicking();
+      if (radiusCircle) { map.removeLayer(radiusCircle); radiusCircle = null; }
+      populatePointLayerSelect();
+    } else {
+      updateRadiusCircle();
+    }
+    clampPanelAfterLayout();
+  }
+
+  observerSrcCtrl?.addEventListener("click", (e) => {
+    const btn = e.target.closest(".wt-dem-card");
+    if (!btn) return;
+    setObserverSource(btn.dataset.observerSource);
+  });
+
+  pointLayerSelect?.addEventListener("change", populateRadiusFieldSelect);
+  radiusFieldSelect?.addEventListener("change", updateBatchRadiusVisibility);
 
   // ── Terrarium tile helpers ─────────────────────────────────────
   // Moved to app/dem-utils.js (loaded before this script).
@@ -403,7 +564,7 @@
   function validate() {
     clearError();
 
-    if (!vsDemSource === "global" && !demSelect.value) {
+    if (vsDemSource !== "global" && !demSelect.value) {
       showError("Please select a DEM raster layer, or enable Use Global DEM.");
       return false;
     }
@@ -420,28 +581,142 @@
       return false;
     }
 
-    const maxR = Number(maxRadiusInp.value);
-    if (!Number.isFinite(maxR) || maxR < 0) {
-      showError("Max radius must be a non-negative number (0 = unlimited).");
-      return false;
-    }
+    if (observerSource === "layer") {
+      if (kedEnabled) {
+        showError("Point layer mode creates vector viewsheds only. Disable KED or switch back to Single Point.");
+        return false;
+      }
+      if (!pointLayerSelect?.value) {
+        showError("Select a point vector layer for the observer source.");
+        return false;
+      }
+      if (!radiusFieldSelect?.value) {
+        const batchR = Number(batchRadiusInp?.value);
+        if (!Number.isFinite(batchR) || batchR <= 0) {
+          showError("Enter a common radius greater than 0 metres, or select a numeric radius field.");
+          return false;
+        }
+        if (vsDemSource === "global" && batchR > 50000) {
+          showError("Common radius is limited to 50 000 m with the Global DEM to avoid fetching too many tiles.");
+          return false;
+        }
+      }
+      return true;
+    } else {
+      const maxR = Number(maxRadiusInp.value);
+      if (!Number.isFinite(maxR) || maxR < 0) {
+        showError("Max radius must be a non-negative number (0 = unlimited).");
+        return false;
+      }
 
-    if (vsDemSource === "global" && !(maxR > 0)) {
-      showError("A radius is required when using the Global DEM (try 5000–20000 m).");
-      return false;
-    }
+      if (vsDemSource === "global" && !(maxR > 0)) {
+        showError("A radius is required when using the Global DEM (try 5000-20000 m).");
+        return false;
+      }
 
-    if (vsDemSource === "global" && maxR > 50000) {
-      showError("Radius is limited to 50 000 m with the Global DEM to avoid fetching too many tiles.");
-      return false;
-    }
+      if (vsDemSource === "global" && maxR > 50000) {
+        showError("Radius is limited to 50 000 m with the Global DEM to avoid fetching too many tiles.");
+        return false;
+      }
 
-    if (!observerLatLng) {
-      showError("Pick an observer location on the map first.");
-      return false;
+      if (!observerLatLng) {
+        showError("Pick an observer location on the map first.");
+        return false;
+      }
     }
 
     return true;
+  }
+
+  function readFiniteNumber(input, fallback) {
+    const raw = input?.value ?? "";
+    const value = Number(raw);
+    return Number.isFinite(value) ? value : fallback;
+  }
+
+  function clampIndex(value, maxExclusive) {
+    return Math.min(maxExclusive - 1, Math.max(0, Math.round(value)));
+  }
+
+  function getCellSizesForLat(transform, width, height, lat) {
+    const extent = transform.extent;
+    const isGeographic = Math.abs(extent.maxX) <= 180 && Math.abs(extent.maxY) <= 90;
+    const rawCellX = Math.abs((extent.maxX - extent.minX) / width);
+    const rawCellY = Math.abs((extent.maxY - extent.minY) / height);
+    if (isGeographic) {
+      const cosLat = Math.max(0.01, Math.cos(lat * Math.PI / 180));
+      return {
+        cellSizeX: rawCellX * 111320 * cosLat,
+        cellSizeY: rawCellY * 111320,
+      };
+    }
+    return { cellSizeX: rawCellX, cellSizeY: rawCellY };
+  }
+
+  async function readLocalDemRecord(localDemRecord) {
+    const transform = localDemRecord.rasterTransform;
+    const width = transform.width;
+    const height = transform.height;
+    const dem = await localDemRecord.rasterImage.readRasters({
+      samples: [0], width, height, interleave: true,
+    });
+    return { dem, width, height, transform };
+  }
+
+  function getFeaturePointCoords(feature) {
+    const geom = feature?.geometry;
+    if (!geom) return [];
+    if (geom.type === "Point" && Array.isArray(geom.coordinates)) {
+      return [geom.coordinates];
+    }
+    if (geom.type === "MultiPoint" && Array.isArray(geom.coordinates)) {
+      return geom.coordinates;
+    }
+    return [];
+  }
+
+  function getBatchObservers() {
+    const layerRecord = loadedLayers.find((lr) => lr.id === pointLayerSelect?.value);
+    const radiusField = radiusFieldSelect?.value || "";
+    const commonRadius = Number(batchRadiusInp?.value);
+    const observers = [];
+    let skipped = 0;
+
+    getPointFeatures(layerRecord).forEach((feature, featureIndex) => {
+      const props = feature.properties || {};
+      const radius = radiusField ? Number(props[radiusField]) : commonRadius;
+      if (!Number.isFinite(radius) || radius <= 0) {
+        skipped += 1;
+        return;
+      }
+      if (vsDemSource === "global" && radius > 50000) {
+        skipped += 1;
+        return;
+      }
+
+      getFeaturePointCoords(feature).forEach((coord, coordIndex) => {
+        const lng = Number(coord?.[0]);
+        const lat = Number(coord?.[1]);
+        if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+          skipped += 1;
+          return;
+        }
+        const sourceLabel = String(
+          props.name ?? props.Name ?? props.label ?? props.Label ?? props.id ?? props.ID ?? `Point ${featureIndex + 1}`
+        );
+        observers.push({
+          id: observers.length + 1,
+          latlng: L.latLng(lat, lng),
+          radius,
+          sourceFeatureIndex: featureIndex,
+          sourcePointIndex: coordIndex,
+          sourceLabel,
+          properties: props,
+        });
+      });
+    });
+
+    return { layerRecord, observers, skipped, radiusField };
   }
 
   // ── Progress UI ───────────────────────────────────────────────
@@ -502,8 +777,8 @@
     const avgCellSize = (cellSizeX + cellSizeY) / 2;
     const maxPixelDist = (maxRadius > 0) ? (maxRadius / avgCellSize) : Infinity;
 
-    const c0 = Math.round(pixObs);
-    const r0 = Math.round(rowObs);
+    const c0 = clampIndex(pixObs, width);
+    const r0 = clampIndex(rowObs, height);
     if (c0 >= 0 && c0 < width && r0 >= 0 && r0 < height) {
       result[r0 * width + c0] = 1; // observer cell always visible
     }
@@ -561,6 +836,273 @@
     for (let r = 1; r < height - 1; r++) { traceLine(r, 0);          traceLine(r, width - 1); }
 
     return result;
+  }
+
+  // ── Knife-Edge Diffraction (Epstein-Peterson) ───────────────
+
+  /**
+   * Compute the Fresnel-Kirchhoff diffraction parameter ν for a single
+   * knife edge given distances d1, d2 to the obstacle tip and wavelength λ.
+   *
+   * ν = h * sqrt( 2(d1+d2) / (λ·d1·d2) )
+   * where h is the clearance height (negative = obstacle above LOS).
+   */
+  function fresnelNu(h, d1, d2, lambda) {
+    if (d1 <= 0 || d2 <= 0) return 0;
+    return h * Math.sqrt(2 * (d1 + d2) / (lambda * d1 * d2));
+  }
+
+  /**
+   * Approximate knife-edge diffraction loss (dB) for a given ν.
+   * Uses the Lee approximation (accurate to < 1 dB):
+   *   L = 0                          ν < -0.7
+   *   L = 20·log10(0.5 - 0.62·ν)   -0.7 ≤ ν < 0
+   *   L = 20·log10(0.5·exp(-0.95ν))  0  ≤ ν < 1
+   *   L = 20·log10(0.4 - √(0.1184-(0.38-0.1ν)²)) 1 ≤ ν < 2.4
+   *   L = 20·log10(0.225/ν)         ν ≥ 2.4
+   * Positive return = loss in dB.
+   */
+  function kedLoss(nu) {
+    if (nu < -0.7) return 0;
+    let Jnu;
+    if (nu < 0)   Jnu = 0.5 - 0.62 * nu;
+    else if (nu < 1)   Jnu = 0.5 * Math.exp(-0.95 * nu);
+    else if (nu < 2.4) Jnu = 0.4 - Math.sqrt(Math.max(0, 0.1184 - (0.38 - 0.1 * nu) ** 2));
+    else               Jnu = 0.225 / nu;
+    return -20 * Math.log10(Math.max(Jnu, 1e-10));
+  }
+
+  /**
+   * Epstein-Peterson multiple knife-edge diffraction loss along a ray.
+   *
+   * Steps:
+   *  1. Sample nSamples terrain heights between observer and target pixel.
+   *  2. Find the set of peaks (points above the straight LOS between
+   *     consecutive already-found knife edges).
+   *  3. Sum the individual KE diffraction losses.
+   *
+   * @param {TypedArray} dem
+   * @param {number}     W, H         DEM dimensions
+   * @param {number}     c0, r0       observer pixel (col, row)
+   * @param {number}     c1, r1       target pixel
+   * @param {number}     obsElevM     observer elevation + height (m asl)
+   * @param {number}     tgtH         target height above ground (m)
+   * @param {number}     cellSizeX, cellSizeY  metres per pixel
+   * @param {number}     lambda       wavelength in metres
+   * @param {number}     nSamples     number of profile sample points
+   * @param {boolean}    curvature    apply Earth curvature correction
+   * @returns {number}  total additional diffraction loss in dB (≥ 0)
+   */
+  function multipleKedLoss(dem, W, H, c0, r0, c1, r1,
+                            obsElevM, tgtH, cellSizeX, cellSizeY,
+                            lambda, nSamples, curvature) {
+    if (nSamples < 2) nSamples = 2;
+
+    // Build terrain profile: array of { dist: metres, elev: metres }
+    const profile = [];
+    for (let s = 0; s <= nSamples; s++) {
+      const t   = s / nSamples;
+      const c   = c0 + t * (c1 - c0);
+      const r   = r0 + t * (r1 - r0);
+      const ci  = Math.round(c), ri = Math.round(r);
+      if (ci < 0 || ci >= W || ri < 0 || ri >= H) continue;
+      const dxM = (c - c0) * cellSizeX;
+      const dyM = (r - r0) * cellSizeY;
+      const d   = Math.sqrt(dxM * dxM + dyM * dyM);
+      let elev  = Number(dem[ri * W + ci]);
+      if (!Number.isFinite(elev)) elev = 0;
+      // Earth curvature correction: terrain is effectively raised by d²/(2R)·(1-k)
+      // because the Earth curves away from the LOS straight line.
+      const curv = curvature ? (d * d / (2 * EARTH_RADIUS_M)) * (1 - REFRACTION_K) : 0;
+      profile.push({ dist: d, elev: elev + curv });
+    }
+
+    if (profile.length < 2) return 0;
+
+    const dTotal = profile[profile.length - 1].dist;
+    if (dTotal <= 0) return 0;
+
+    // Target apparent elevation at far end
+    const tgtElev = profile[profile.length - 1].elev + tgtH;
+
+    // Epstein-Peterson: iteratively find dominant knife edges
+    // Start: segment is observer → target
+    // A "knife edge" is the sample with the maximum clearance-height above
+    // the straight line between the two endpoints of the current segment.
+    const MAX_EDGES = 20;
+    const edges = [0, profile.length - 1]; // indices of endpoints
+
+    for (let iter = 0; iter < MAX_EDGES; iter++) {
+      // Find the index with highest obstruction in each gap
+      let bestIdx = -1, bestH = -Infinity;
+      for (let i = 0; i < edges.length - 1; i++) {
+        const ia = edges[i], ib = edges[i + 1];
+        if (ib - ia < 2) continue;
+        const da = profile[ia].dist, db = profile[ib].dist;
+        const ea = (ia === 0) ? obsElevM : profile[ia].elev;
+        const eb = (ib === profile.length - 1) ? tgtElev : profile[ib].elev;
+        for (let j = ia + 1; j < ib; j++) {
+          const dj = profile[j].dist;
+          const t2 = (dj - da) / (db - da);
+          const losElev = ea + t2 * (eb - ea);  // LOS elevation at j
+          const h = losElev - profile[j].elev;  // positive = LOS above terrain (clear)
+          if (-h > bestH) { bestH = -h; bestIdx = j; }
+        }
+      }
+      // If no point blocks LOS (all clear), stop adding edges
+      if (bestIdx < 0 || bestH <= 0) break;
+      // Insert edge index in sorted order
+      const pos = edges.findIndex((e) => e > bestIdx);
+      edges.splice(pos < 0 ? edges.length - 1 : pos, 0, bestIdx);
+    }
+
+    // Sum loss over each knife-edge triplet
+    let totalLoss = 0;
+    for (let i = 1; i < edges.length - 1; i++) {
+      const ia = edges[i - 1], ib = edges[i], ic = edges[i + 1];
+      const ea = (ia === 0) ? obsElevM : profile[ia].elev;
+      const ec = (ic === profile.length - 1) ? tgtElev : profile[ic].elev;
+      const d1 = profile[ib].dist - profile[ia].dist;
+      const d2 = profile[ic].dist - profile[ib].dist;
+      if (d1 <= 0 || d2 <= 0) continue;
+      // Clearance h: LOS elevation at the edge minus terrain height (negative = obstruction)
+      const t2 = d1 / (d1 + d2);
+      const losAtEdge = ea + t2 * (ec - ea);
+      const h = losAtEdge - profile[ib].elev;  // positive = clear, negative = blocked
+      const nu = fresnelNu(-h, d1, d2, lambda);
+      totalLoss += kedLoss(nu);
+    }
+
+    return totalLoss; // dB, ≥ 0
+  }
+
+  /**
+   * Compute the full KED signal-level raster.
+   *
+   * For each target pixel, compute:
+   *   Rx (dBm) = Tx (dBm) - FSPL(d) - multipleKedLoss
+   *
+   * where FSPL = 20log10(4πd/λ).
+   *
+   * @returns {Float32Array} rxLevel in dBm, NaN = no path
+   */
+  function computeKedRaster({ dem, width, height, pixObs, rowObs,
+                               cellSizeX, cellSizeY, obsElev, obsH,
+                               tgtH, curvature, maxRadius,
+                               freqMHz, txPowerDbm, nSamples }) {
+    const lambda = 3e8 / (freqMHz * 1e6);   // wavelength in metres
+    const obsElevM = obsElev + obsH;
+    const avgCell  = (cellSizeX + cellSizeY) / 2;
+    const maxPixDist = (maxRadius > 0) ? (maxRadius / avgCell) : Infinity;
+
+    const c0 = clampIndex(pixObs, width);
+    const r0 = clampIndex(rowObs, height);
+
+    const result = new Float32Array(width * height).fill(NaN);
+
+    for (let r = 0; r < height; r++) {
+      for (let c = 0; c < width; c++) {
+        const dx = c - c0, dy = r - r0;
+        const distPx = Math.sqrt(dx * dx + dy * dy);
+        if (distPx > maxPixDist) continue;
+
+        const dxM = dx * cellSizeX, dyM = dy * cellSizeY;
+        const distM = Math.sqrt(dxM * dxM + dyM * dyM);
+        if (distM < 0.1) {
+          result[r * width + c] = txPowerDbm;
+          continue;
+        }
+
+        // Free-space path loss (dB)
+        const fspl = 20 * Math.log10(Math.max(distM, 1)) +
+                     20 * Math.log10(freqMHz * 1e6) -
+                     20 * Math.log10(3e8 / (4 * Math.PI));
+
+        // Multiple KED diffraction loss
+        const diffLoss = multipleKedLoss(
+          dem, width, height, c0, r0, c, r,
+          obsElevM, tgtH, cellSizeX, cellSizeY,
+          lambda, nSamples, curvature
+        );
+
+        result[r * width + c] = txPowerDbm - fspl - diffLoss;
+      }
+    }
+    return result;
+  }
+
+  /**
+   * KED is much more expensive than binary viewshed because every output cell
+   * samples a terrain profile. Keep the output grid bounded and scale it back
+   * over the original DEM extent as an image overlay.
+   */
+  function prepareKedGrid({ dem, width, height, pixObs, rowObs, cellSizeX, cellSizeY }) {
+    const MAX_KED_DIMENSION = 768;
+    const longestSide = Math.max(width, height);
+    if (longestSide <= MAX_KED_DIMENSION) {
+      return { dem, width, height, pixObs, rowObs, cellSizeX, cellSizeY };
+    }
+
+    const scale = longestSide / MAX_KED_DIMENSION;
+    const outWidth = Math.max(2, Math.round(width / scale));
+    const outHeight = Math.max(2, Math.round(height / scale));
+    const outDem = new Float32Array(outWidth * outHeight);
+
+    for (let r = 0; r < outHeight; r++) {
+      const srcR = Math.min(height - 1, Math.max(0, Math.round((r + 0.5) * height / outHeight - 0.5)));
+      for (let c = 0; c < outWidth; c++) {
+        const srcC = Math.min(width - 1, Math.max(0, Math.round((c + 0.5) * width / outWidth - 0.5)));
+        outDem[r * outWidth + c] = dem[srcR * width + srcC];
+      }
+    }
+
+    return {
+      dem: outDem,
+      width: outWidth,
+      height: outHeight,
+      pixObs: pixObs * outWidth / width,
+      rowObs: rowObs * outHeight / height,
+      cellSizeX: cellSizeX * width / outWidth,
+      cellSizeY: cellSizeY * height / outHeight,
+    };
+  }
+
+  // ── KED red opacity renderer ──────────────────────────────────
+
+  /**
+   * Render a Float32Array of rx-level values to an RGBA ImageData
+   * as a fixed red overlay. Highest received value is fully opaque;
+   * weaker received values, which indicate higher total path loss, fade out.
+   */
+  function kedRasterToCanvas(rxData, width, height, minVal, maxVal) {
+    const canvas = document.createElement("canvas");
+    canvas.width  = width;
+    canvas.height = height;
+    const ctx  = canvas.getContext("2d");
+    const img  = ctx.createImageData(width, height);
+    const data = img.data;
+    const range = maxVal - minVal || 1;
+    const minAlpha = 18;
+
+    for (let i = 0; i < rxData.length; i++) {
+      const v = rxData[i];
+      const base = i * 4;
+      if (!Number.isFinite(v)) {
+        data[base]     = 0;
+        data[base + 1] = 0;
+        data[base + 2] = 0;
+        data[base + 3] = 0;  // transparent
+        continue;
+      }
+      const t = Math.max(0, Math.min(1, (v - minVal) / range));
+      data[base]     = 255;
+      data[base + 1] = 0;
+      data[base + 2] = 0;
+      data[base + 3] = Math.round(minAlpha + t * (255 - minAlpha));
+    }
+
+    ctx.putImageData(img, 0, 0);
+    return canvas;
   }
 
   // ── Visibility → GeoJSON polygon tracing ─────────────────────
@@ -813,7 +1355,7 @@
       id:                     crypto.randomUUID(),
       kind:                   "vector",
       name:                   VIEWSHED_LAYER_NAME,
-      sourceType:             "Viewshed Analysis",
+      sourceType:             "Viewshed / Diffraction Loss Modelling",
       color,
       geometryKind:           "mixed",
       isVisible:              true,
@@ -846,6 +1388,268 @@
     };
   }
 
+  function addSplitViewshedFeatures(features, multiPolygon, observer) {
+    const polygons = multiPolygon?.coordinates || [];
+    polygons.forEach((polygonCoords, partIndex) => {
+      if (!Array.isArray(polygonCoords) || !polygonCoords.length) return;
+      features.push({
+        type: "Feature",
+        properties: {
+          type: "viewshed_area",
+          label: `Observer ${observer.id} visible area ${partIndex + 1}`,
+          observer_id: observer.id,
+          part_index: partIndex + 1,
+          radius_m: observer.radius,
+          source_index: observer.sourceFeatureIndex + 1,
+          source_point_index: observer.sourcePointIndex + 1,
+          source_label: observer.sourceLabel,
+        },
+        geometry: {
+          type: "Polygon",
+          coordinates: polygonCoords,
+        },
+      });
+    });
+  }
+
+  function addViewPointFeature(features, observer, status, note = "") {
+    features.push({
+      type: "Feature",
+      properties: {
+        type: "view_point",
+        label: `Observer ${observer.id}`,
+        observer_id: observer.id,
+        part_index: null,
+        radius_m: observer.radius,
+        source_index: observer.sourceFeatureIndex + 1,
+        source_point_index: observer.sourcePointIndex + 1,
+        source_label: observer.sourceLabel,
+        lat: observer.latlng.lat,
+        lng: observer.latlng.lng,
+        status,
+        note,
+      },
+      geometry: {
+        type: "Point",
+        coordinates: [observer.latlng.lng, observer.latlng.lat],
+      },
+    });
+  }
+
+  function buildBatchViewshedLayerRecord(features, sourceName, skippedCount) {
+    const VIEWSHED_COLOR = "#00ff78";
+    const POINT_COLOR = "#ffffff";
+    const geojson = { type: "FeatureCollection", features };
+    const styleConfig = createDefaultStyleConfig(VIEWSHED_COLOR);
+    styleConfig.fillOpacity = 0.42;
+    styleConfig.strokeOpacity = 0.82;
+    styleConfig.strokeWidth = 1.3;
+
+    const layerGroup = L.featureGroup();
+    features.forEach((feature) => {
+      if (feature.geometry?.type === "Point") {
+        const [lng, lat] = feature.geometry.coordinates;
+        const marker = L.circleMarker([lat, lng], {
+          radius: 6,
+          color: POINT_COLOR,
+          fillColor: VIEWSHED_COLOR,
+          fillOpacity: 1,
+          weight: 2,
+          pane: "markerPane",
+          interactive: true,
+        });
+        marker.bindTooltip(feature.properties.label || "View point", {
+          permanent: false,
+          direction: "top",
+          offset: [0, -8],
+          className: "measure-tooltip",
+        });
+        marker.bindPopup(
+          `<strong>${escapeHtml(feature.properties.label || "View point")}</strong><br>` +
+          `Source: ${escapeHtml(feature.properties.source_label || "")}<br>` +
+          `Radius: ${Number(feature.properties.radius_m).toFixed(0)} m<br>` +
+          `Status: ${escapeHtml(feature.properties.status || "ok")}`
+        );
+        marker.feature = feature;
+        layerGroup.addLayer(marker);
+      } else if (feature.geometry?.type === "Polygon") {
+        const polygonLayer = L.geoJSON(feature, {
+          style: () => ({
+            color: VIEWSHED_COLOR,
+            fillColor: VIEWSHED_COLOR,
+            fillOpacity: 0.42,
+            opacity: 0.82,
+            weight: 1.3,
+            pane: "overlayPane",
+          }),
+          onEachFeature: (ft, layer) => {
+            layer.bindPopup(
+              `<strong>${escapeHtml(ft.properties.label || "Viewshed area")}</strong><br>` +
+              `Source: ${escapeHtml(ft.properties.source_label || "")}<br>` +
+              `Radius: ${Number(ft.properties.radius_m).toFixed(0)} m`
+            );
+          },
+        });
+        polygonLayer.feature = feature;
+        layerGroup.addLayer(polygonLayer);
+      }
+    });
+
+    return {
+      id: crypto.randomUUID(),
+      kind: "vector",
+      name: VIEWSHED_LAYER_NAME,
+      sourceType: "Batch Viewshed / Diffraction Loss Modelling",
+      color: VIEWSHED_COLOR,
+      geometryKind: "mixed",
+      isVisible: true,
+      geojson,
+      fields: [
+        "type", "label", "observer_id", "part_index", "radius_m",
+        "source_index", "source_point_index", "source_label", "lat", "lng", "status", "note",
+      ],
+      crs: CRSManager.DEFAULT_CRS,
+      crsMetadata: CRSManager.getCrsMetadata(CRSManager.DEFAULT_CRS),
+      styleConfig,
+      labelConfig: createDefaultLabelConfig(),
+      filterConfig: createDefaultFilterConfig(),
+      interpolationConfig: createDefaultInterpolationConfig(),
+      heatmapConfig: createDefaultHeatmapConfig(),
+      interpolationOverlay: null,
+      interpolationObjectUrl: "",
+      layerGroup,
+      featureCount: features.length,
+      visibleFeatureCount: features.length,
+      layerOpacity: 1,
+      isDerived: true,
+      batchViewshed: {
+        sourceName,
+        skippedCount,
+      },
+    };
+  }
+
+  // ── KED Raster Layer Builder ─────────────────────────────────
+
+  /**
+   * Build a raster-style layer record for the KED result.
+   * We create an L.imageOverlay from a canvas element.
+   */
+  function buildKedLayerRecord(canvas, bounds, stats, obsLatLng, params) {
+    const objectUrl = canvas.toDataURL("image/png");
+    const imageOverlay = L.imageOverlay(objectUrl, bounds, {
+      opacity:     1,
+      interactive: false,
+      pane:        "overlayPane",
+      className:   "ked-raster-overlay",
+    });
+
+    // Observer marker
+    const obsMarker = L.circleMarker([obsLatLng.lat, obsLatLng.lng], {
+      radius:      7,
+      color:       "#ffffff",
+      fillColor:   "#ffb428",
+      fillOpacity: 1,
+      weight:      2.5,
+      pane:        "markerPane",
+      interactive: true,
+    });
+    obsMarker.bindTooltip("Observer (KED)", {
+      permanent: false, direction: "top", offset: [0, -8], className: "measure-tooltip",
+    });
+    obsMarker.bindPopup(
+      `<strong>KED Observer</strong><br>` +
+      `Lat: ${obsLatLng.lat.toFixed(5)}<br>Lng: ${obsLatLng.lng.toFixed(5)}<br>` +
+      `Freq: ${params.freqMHz} MHz<br>Tx: ${params.txPowerDbm} dBm<br>` +
+      `Rx threshold: ${params.rxThreshDbm} dBm<br>` +
+      `Range: ${stats.minRx.toFixed(1)} – ${stats.maxRx.toFixed(1)} dBm`
+    );
+
+    imageOverlay.bindPopup(
+      `<strong>${KED_LAYER_NAME}</strong><br>` +
+      `Freq: ${params.freqMHz} MHz<br>Tx: ${params.txPowerDbm} dBm<br>` +
+      `Rx threshold: ${params.rxThreshDbm} dBm<br>` +
+      `Range: ${stats.minRx.toFixed(1)} – ${stats.maxRx.toFixed(1)} dBm<br>` +
+      `Grid: ${params.width} x ${params.height}`
+    );
+
+    const layerGroup = L.featureGroup([imageOverlay, obsMarker]);
+
+    const rasterMetadata = {
+      layerType: "ked",
+      width: params.width,
+      height: params.height,
+      bandCount: 1,
+      bounds,
+      sourceLayerName: params.sourceLayerName || "DEM",
+      methodLabel: "Knife-Edge Diffraction",
+      field: "rx_dBm",
+      fieldLabel: "Rx signal (dBm)",
+      minValue: stats.minRx,
+      maxValue: stats.maxRx,
+      ramp: "ked-red-alpha",
+      freqMHz: params.freqMHz,
+      txPowerDbm: params.txPowerDbm,
+      rxThreshDbm: params.rxThreshDbm,
+    };
+
+    const rasterStyleConfig = {
+      mode: "pseudocolor",
+      ramp: "ked-red-alpha",
+      min: stats.minRx,
+      max: stats.maxRx,
+    };
+
+    return {
+      id:                     crypto.randomUUID(),
+      kind:                   "raster",
+      rasterKind:             "ked",
+      name:                   KED_LAYER_NAME,
+      sourceType:             "KED Diffraction Analysis",
+      color:                  "#ffb428",
+      isVisible:              true,
+      geojson:                { type: "FeatureCollection", features: [] },
+      fields:                 [],
+      crs:                    CRSManager.DEFAULT_CRS,
+      crsMetadata:            CRSManager.getCrsMetadata(CRSManager.DEFAULT_CRS),
+      styleConfig:            createDefaultStyleConfig("#ffb428"),
+      labelConfig:            createDefaultLabelConfig(),
+      filterConfig:           createDefaultFilterConfig(),
+      interpolationConfig:    null,
+      heatmapConfig:          null,
+      interpolationOverlay:   null,
+      interpolationObjectUrl: "",
+      layerGroup,
+      rasterObjectUrl:        "",
+      rasterMetadata,
+      rasterStyleConfig,
+      featureCount:           1,
+      visibleFeatureCount:    1,
+      layerOpacity:           1,
+      isDerived:              true,
+      kedStats:               stats,
+      kedParams:              params,
+      onRemove() {
+        if (_replacingViewshed) return;
+        if (radiusCircle) { map.removeLayer(radiusCircle); radiusCircle = null; }
+        observerLatLng = null;
+        coordsDisplay.value = "";
+        coordsDisplay.placeholder = "Not set — or paste lat, lng";
+        coordsDisplay.classList.remove("is-set");
+        clearObsBtn.hidden = true;
+      },
+    };
+  }
+
+  function removeExistingKedLayer() {
+    const existing = loadedLayers.find((lr) => lr.name === KED_LAYER_NAME);
+    if (existing) {
+      _replacingViewshed = true;
+      removeLayer(existing.id);
+      _replacingViewshed = false;
+    }
+  }
+
   /**
    * Add the viewshed layer at index 0 of loadedLayers so it sits on TOP of
    * the DEM in both the layer panel and on the Leaflet map.
@@ -865,6 +1669,116 @@
     if (typeof onProjectDirty === "function") onProjectDirty();
   }
 
+  async function computeOneViewshedFeatureSet({ observer, dem, width, height, transform, obsH, tgtH, curvature, cellSizeX, cellSizeY }) {
+    const [rasterX, rasterY] = transform.projectLatLngToRaster(observer.latlng);
+    const [pixObs, rowObs] = transform.rasterToPixel(rasterX, rasterY);
+
+    if (pixObs < 0 || pixObs >= width || rowObs < 0 || rowObs >= height) {
+      return { skipped: true, note: "Observer outside DEM extent" };
+    }
+
+    const obsCol = clampIndex(pixObs, width);
+    const obsRow = clampIndex(rowObs, height);
+    const obsIdx = obsRow * width + obsCol;
+    const obsElev = Number(dem[obsIdx]);
+    if (!Number.isFinite(obsElev)) {
+      return { skipped: true, note: "Observer on no-data cell" };
+    }
+
+    const visibility = computeViewshed({
+      dem, width, height,
+      pixObs, rowObs, cellSizeX, cellSizeY,
+      obsElev, obsH, tgtH, curvature,
+      maxRadius: observer.radius,
+    });
+    const multiPolygon = visibilityToMultiPolygon(visibility, width, height, transform);
+    return { skipped: false, multiPolygon };
+  }
+
+  async function runBatchViewshed({ isGlobal, localDemRecord, obsH, tgtH, curvature }) {
+    const batch = getBatchObservers();
+    if (!batch.layerRecord) {
+      throw new Error("Selected point layer is no longer available.");
+    }
+    if (!batch.observers.length) {
+      throw new Error("No valid observer points were found. Check point geometry and radius values.");
+    }
+
+    const features = [];
+    let skippedCount = batch.skipped;
+    let localDem = null;
+
+    if (!isGlobal) {
+      progressLabel.textContent = "Reading local DEM once for batch viewshed...";
+      localDem = await readLocalDemRecord(localDemRecord);
+    }
+
+    for (let i = 0; i < batch.observers.length; i += 1) {
+      const observer = batch.observers[i];
+      progressLabel.textContent = `Computing observer ${i + 1} of ${batch.observers.length}...`;
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      let result;
+      if (isGlobal) {
+        const demResult = await fetchGlobalDem(
+          observer.latlng,
+          observer.radius,
+          (msg) => { progressLabel.textContent = `Observer ${i + 1}/${batch.observers.length}: ${msg}`; }
+        );
+        result = await computeOneViewshedFeatureSet({
+          observer,
+          dem: demResult.dem,
+          width: demResult.width,
+          height: demResult.height,
+          transform: demResult.transform,
+          obsH,
+          tgtH,
+          curvature,
+          cellSizeX: demResult.cellSizeX,
+          cellSizeY: demResult.cellSizeY,
+        });
+      } else {
+        const sizes = getCellSizesForLat(localDem.transform, localDem.width, localDem.height, observer.latlng.lat);
+        result = await computeOneViewshedFeatureSet({
+          observer,
+          dem: localDem.dem,
+          width: localDem.width,
+          height: localDem.height,
+          transform: localDem.transform,
+          obsH,
+          tgtH,
+          curvature,
+          cellSizeX: sizes.cellSizeX,
+          cellSizeY: sizes.cellSizeY,
+        });
+      }
+
+      if (result.skipped) {
+        skippedCount += 1;
+        addViewPointFeature(features, observer, "skipped", result.note);
+      } else {
+        addSplitViewshedFeatures(features, result.multiPolygon, observer);
+        addViewPointFeature(features, observer, "ok");
+      }
+    }
+
+    if (!features.length) {
+      throw new Error("No output features were created from the selected point layer.");
+    }
+
+    removeExistingViewshedLayer();
+    const src = isGlobal ? "Global DEM (Terrarium ~30 m)" : localDemRecord.name;
+    const layerRecord = buildBatchViewshedLayerRecord(features, `${batch.layerRecord.name} / ${src}`, skippedCount);
+    addViewshedLayerRecord(layerRecord);
+
+    const polygonCount = features.filter((feature) => feature.geometry?.type === "Polygon").length;
+    const pointCount = features.filter((feature) => feature.geometry?.type === "Point").length;
+    updateStatus(
+      `Batch viewshed complete (${src}). Created ${polygonCount} polygon feature(s) and ${pointCount} view point feature(s)` +
+      (skippedCount ? `; skipped ${skippedCount} invalid point/radius item(s).` : ".")
+    );
+  }
+
   // ── Apply handler ─────────────────────────────────────────────
 
   applyBtn.addEventListener("click", async () => {
@@ -874,7 +1788,7 @@
     const isGlobal  = vsDemSource === "global";
     const obsH      = Number(obsHeightInp.value);
     const tgtH      = Number(tgtHeightInp.value);
-    const maxRadius = Number(maxRadiusInp.value);  // 0 = unlimited (local only)
+    const maxRadius = Number(maxRadiusInp.value);
     const curvature = curvatureChk.checked;
 
     // Sync guard: for local DEM, check record still exists before showing spinner
@@ -890,14 +1804,17 @@
     showProgress();
     clearError();
 
-    // Safety net: spinner resets after 2 min if something fails outside try/catch
     const _spinnerGuard = setTimeout(() => { if (isComputing) hideProgress(); }, 120_000);
 
     try {
+      if (observerSource === "layer") {
+        await runBatchViewshed({ isGlobal, localDemRecord, obsH, tgtH, curvature });
+        return;
+      }
+
       let dem, demWidth, demHeight, transform, cellSizeX, cellSizeY;
 
       if (isGlobal) {
-        // ── Global path: fetch Terrarium tiles ──────────────────
         progressLabel.textContent = "Fetching elevation tiles…";
         const result = await fetchGlobalDem(
           observerLatLng,
@@ -910,23 +1827,15 @@
         transform = result.transform;
         cellSizeX = result.cellSizeX;
         cellSizeY = result.cellSizeY;
-        progressLabel.textContent = "Computing viewshed…";
-
       } else {
-        // ── Local GeoTIFF path ───────────────────────────────────
-        progressLabel.textContent = "Computing viewshed…";
-        transform = localDemRecord.rasterTransform;
-        demWidth  = transform.width;
-        demHeight = transform.height;
-
-        const rasters = await localDemRecord.rasterImage.readRasters({
-          samples: [0], width: demWidth, height: demHeight, interleave: true,
-        });
-        dem = rasters;
-
-        const extent = transform.extent;
-        cellSizeX = Math.abs((extent.maxX - extent.minX) / demWidth);
-        cellSizeY = Math.abs((extent.maxY - extent.minY) / demHeight);
+        const localDem = await readLocalDemRecord(localDemRecord);
+        dem = localDem.dem;
+        demWidth = localDem.width;
+        demHeight = localDem.height;
+        transform = localDem.transform;
+        const sizes = getCellSizesForLat(transform, demWidth, demHeight, observerLatLng.lat);
+        cellSizeX = sizes.cellSizeX;
+        cellSizeY = sizes.cellSizeY;
       }
 
       // ── Project observer LatLng → pixel ───────────────────────
@@ -942,40 +1851,117 @@
         );
       }
 
-      // ── Ground elevation at observer ──────────────────────────
-      const obsIdx  = Math.round(rowObs) * demWidth + Math.round(pixObs);
+      const obsCol = clampIndex(pixObs, demWidth);
+      const obsRow = clampIndex(rowObs, demHeight);
+      const obsIdx = obsRow * demWidth + obsCol;
       const obsElev = Number(dem[obsIdx]);
       if (!Number.isFinite(obsElev)) {
         throw new Error("Observer point falls on a no-data cell in the DEM.");
       }
 
-      // ── Yield so the progress bar actually renders ─────────────
       await new Promise((resolve) => setTimeout(resolve, 0));
 
-      // ── Run viewshed algorithm ────────────────────────────────
-      const visibility = computeViewshed({
-        dem, width: demWidth, height: demHeight,
-        pixObs, rowObs, cellSizeX, cellSizeY,
-        obsElev, obsH, tgtH, curvature, maxRadius,
-      });
-
-      // ── Yield so the progress label update is visible ─────────
-      progressLabel.textContent = "Tracing viewshed polygon\u2026";
-      await new Promise((resolve) => setTimeout(resolve, 0));
-
-      // ── Trace pixel boundaries → dissolved MultiPolygon ──────
-      const multiPolygon = visibilityToMultiPolygon(visibility, demWidth, demHeight, transform);
-
-      // ── Remove temp observer marker (now embedded in layer) ───
       if (observerMarker) { map.removeLayer(observerMarker); observerMarker = null; }
 
-      // ── Add layer ─────────────────────────────────────────────
-      removeExistingViewshedLayer();
-      const layerRecord = buildViewshedLayerRecord(multiPolygon, observerLatLng);
-      addViewshedLayerRecord(layerRecord);
+      if (kedEnabled) {
+        // ══ KED DIFFRACTION PATH ══════════════════════════════
+        const freqMHz     = Math.max(1, readFiniteNumber(kedFreqInp, 900));
+        const txPowerDbm  = readFiniteNumber(kedTxPwrInp, 30);
+        const rxThreshDbm = readFiniteNumber(kedRxThreshInp, -90);
+        const nSamples    = Math.max(10, Math.min(500, Math.round(readFiniteNumber(kedSamplesInp, 64))));
+        if (!Number.isFinite(txPowerDbm) || txPowerDbm < -30 || txPowerDbm > 60) {
+          throw new Error("KED Tx power must be between -30 and 60 dBm.");
+        }
+        if (!Number.isFinite(rxThreshDbm) || rxThreshDbm < -150 || rxThreshDbm > 0) {
+          throw new Error("KED Rx threshold must be between -150 and 0 dBm.");
+        }
 
-      const src = isGlobal ? "Global DEM (Terrarium ~30 m)" : localDemRecord.name;
-      updateStatus(`Viewshed complete (${src}). Visible areas shown in green on the "Viewshed" layer.`);
+        progressLabel.textContent = "Computing KED diffraction raster…";
+        await new Promise((resolve) => setTimeout(resolve, 0));
+
+        const kedGrid = prepareKedGrid({
+          dem, width: demWidth, height: demHeight,
+          pixObs, rowObs, cellSizeX, cellSizeY,
+        });
+
+        const rxData = computeKedRaster({
+          dem: kedGrid.dem, width: kedGrid.width, height: kedGrid.height,
+          pixObs: kedGrid.pixObs, rowObs: kedGrid.rowObs,
+          cellSizeX: kedGrid.cellSizeX, cellSizeY: kedGrid.cellSizeY,
+          obsElev, obsH, tgtH, curvature, maxRadius,
+          freqMHz, txPowerDbm, nSamples,
+        });
+
+        progressLabel.textContent = "Rendering KED signal raster…";
+        await new Promise((resolve) => setTimeout(resolve, 0));
+
+        // Compute stats for color mapping
+        let minRx = Infinity, maxRx = -Infinity;
+        for (let i = 0; i < rxData.length; i++) {
+          const v = rxData[i];
+          if (!Number.isFinite(v)) continue;
+          if (v < minRx) minRx = v;
+          if (v > maxRx) maxRx = v;
+        }
+        if (!Number.isFinite(minRx)) { minRx = -120; maxRx = txPowerDbm; }
+
+        const canvas = kedRasterToCanvas(rxData, kedGrid.width, kedGrid.height, minRx, maxRx);
+
+        // Compute geographic bounds from raster transform (handles projected CRS)
+        const ext = transform.extent;
+        const corners = [
+          transform.unprojectRasterPoint(ext.minX, ext.minY),
+          transform.unprojectRasterPoint(ext.minX, ext.maxY),
+          transform.unprojectRasterPoint(ext.maxX, ext.minY),
+          transform.unprojectRasterPoint(ext.maxX, ext.maxY),
+        ];
+        const bounds = L.latLngBounds(corners.map(pt => [pt.lat, pt.lng]));
+
+        const kedParams = {
+          freqMHz,
+          txPowerDbm,
+          rxThreshDbm,
+          nSamples,
+          width: kedGrid.width,
+          height: kedGrid.height,
+          sourceLayerName: isGlobal ? "Global DEM" : localDemRecord.name,
+        };
+        const kedStats  = { minRx, maxRx };
+
+        removeExistingKedLayer();
+        const layerRecord = buildKedLayerRecord(canvas, bounds, kedStats, observerLatLng, kedParams);
+        addViewshedLayerRecord(layerRecord);
+
+        const src = isGlobal ? "Global DEM" : localDemRecord.name;
+        updateStatus(
+          `KED diffraction analysis complete (${src}, ${freqMHz} MHz). ` +
+          `Rx range: ${minRx.toFixed(1)} – ${maxRx.toFixed(1)} dBm. ` +
+          `Raster ${kedGrid.width}×${kedGrid.height} on "${KED_LAYER_NAME}" layer.`
+        );
+
+      } else {
+        // ══ STANDARD VIEWSHED PATH ═════════════════════════════
+        progressLabel.textContent = "Computing viewshed…";
+        await new Promise((resolve) => setTimeout(resolve, 0));
+
+        const visibility = computeViewshed({
+          dem, width: demWidth, height: demHeight,
+          pixObs, rowObs, cellSizeX, cellSizeY,
+          obsElev, obsH, tgtH, curvature, maxRadius,
+        });
+
+        progressLabel.textContent = "Tracing viewshed polygon…";
+        await new Promise((resolve) => setTimeout(resolve, 0));
+
+        const multiPolygon = visibilityToMultiPolygon(visibility, demWidth, demHeight, transform);
+
+        removeExistingViewshedLayer();
+        const layerRecord = buildViewshedLayerRecord(multiPolygon, observerLatLng);
+        addViewshedLayerRecord(layerRecord);
+
+        const src = isGlobal ? "Global DEM (Terrarium ~30 m)" : localDemRecord.name;
+        updateStatus(`Viewshed complete (${src}). Visible areas shown in green on the "Viewshed" layer.`);
+      }
 
     } catch (err) {
       showError(err.message);

@@ -289,6 +289,7 @@ const colorRamps = {
 const interpolationColorRamps = {
   "terrain-glow": ["#123b7a", "#F26E22", "#d7d56f", "#ff7c43"],
   "viridis-edge": ["#46327e", "#365c8d", "#277f8e", "#4ac16d", "#fde725"],
+  "ked-red-alpha": ["rgba(255,0,0,0.07)", "#ff0000"],
   "sunset-heat": ["#2d1248", "#7c1d6f", "#d14c65", "#f28f3b", "#ffe082"],
   "ice-fire": ["#113a6b", "#2bc0c7", "#f1f5f9", "#ff8a5b", "#7b1e3f"],
   gray: ["#000000", "#ffffff"],

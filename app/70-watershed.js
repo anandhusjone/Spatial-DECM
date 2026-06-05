@@ -116,9 +116,11 @@
     panel.hidden = false;
     toolBtn.setAttribute("aria-pressed", "true");
     refreshDemSelect();
-    // Mutual exclusion with viewshed panel
+    // Mutual exclusion with other terrain panels
     const vs = document.getElementById("viewshed-panel");
     if (vs && !vs.hidden) document.getElementById("viewshed-panel-close-btn")?.click();
+    const pk = document.getElementById("peaks-panel");
+    if (pk && !pk.hidden) document.getElementById("peaks-panel-close-btn")?.click();
   }
 
   function closePanel() {

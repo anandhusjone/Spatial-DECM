@@ -776,6 +776,8 @@ li {
   padding: 8px 10px;
   transform-origin: center top;
   position: relative;
+  min-width: 0;
+  overflow: hidden;
   transition: border-color 180ms ease, box-shadow 180ms ease, background 180ms ease;
 }
 
@@ -825,6 +827,9 @@ li {
   font-size: 0.72rem;
   color: var(--muted);
   margin-top: 1px;
+  display: block;
+  max-width: 100%;
+  min-width: 0;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -835,6 +840,9 @@ li {
   font-size: 0.72rem;
   color: var(--muted);
   padding: 2px 0 4px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 .layer-card-status.status-teal   { color: #0F9070; }
 .layer-card-status.status-orange { color: var(--accent); }
@@ -844,6 +852,7 @@ li {
 .layer-card-header {
   display: grid;
   gap: 5px;
+  min-width: 0;
 }
 
 .layer-card-primary {
@@ -851,6 +860,7 @@ li {
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 6px;
+  min-width: 0;
 }
 
 /* Name + kind stacked group */
@@ -869,6 +879,8 @@ li {
   padding-left: 2px;
   min-width: 0;
   flex-wrap: wrap;
+  max-width: 100%;
+  overflow: hidden;
 }
 
 .layer-meta-sep {
@@ -951,6 +963,9 @@ li {
   font-weight: 600;
   cursor: pointer;
   color: var(--text);
+  display: block;
+  width: 100%;
+  max-width: 100%;
   min-width: 0;
   white-space: nowrap;
   overflow: hidden;
@@ -961,11 +976,15 @@ li {
   font-size: 0.75rem;
   color: var(--muted);
   line-height: 1.3;
-  white-space: nowrap;
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .layer-meta-strong {
   color: var(--text);
+  flex: 0 1 auto;
 }
 
 .layer-controls {
@@ -3831,7 +3850,7 @@ details[open] .advanced-style-summary::before {
 }
 
 /* ================================================================
-   Viewshed Analysis Floating Panel  (#viewshed-panel)
+   Viewshed / Diffraction Loss Modelling Floating Panel  (#viewshed-panel)
    ================================================================ */
 
 /* ── Button states ── */
@@ -3839,6 +3858,12 @@ details[open] .advanced-style-summary::before {
   color: #00ff78;
   border-color: rgba(0, 255, 120, 0.45);
   background: rgba(0, 255, 120, 0.08);
+}
+
+#peaks-btn.pk-active {
+  color: #ffb454;
+  border-color: rgba(255, 180, 84, 0.5);
+  background: rgba(255, 180, 84, 0.08);
 }
 
 #viewshed-btn.vs-picking {
@@ -3854,6 +3879,7 @@ details[open] .advanced-style-summary::before {
   left: 70px;
   z-index: 800;
   width: 280px;
+  max-height: calc(100dvh - 24px);
   border: 1px solid var(--border);
   border-radius: 14px;
   background: var(--panel);
@@ -3861,6 +3887,8 @@ details[open] .advanced-style-summary::before {
   backdrop-filter: blur(12px);
   user-select: none;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
 .vs-panel[hidden] {
@@ -3872,6 +3900,7 @@ details[open] .advanced-style-summary::before {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex: 0 0 auto;
   padding: 10px 14px 9px;
   cursor: grab;
   touch-action: none;
@@ -3912,6 +3941,21 @@ details[open] .advanced-style-summary::before {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+
+.vs-panel-footer {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 14px 14px;
+  border-top: 1px solid var(--border);
+  background: color-mix(in srgb, var(--panel) 92%, transparent);
 }
 
 /* ── Form atoms ── */
@@ -3962,6 +4006,17 @@ details[open] .advanced-style-summary::before {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 10px;
+}
+
+.vs-observer-source-cards {
+  grid-template-columns: 1fr 1fr;
+}
+
+.vs-batch-note {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--text-muted);
 }
 
 .vs-unit-input {
@@ -4171,6 +4226,89 @@ details[open] .advanced-style-summary::before {
 }
 
 
+/* ── Knife-Edge Diffraction toggle row ── */
+.vs-ked-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.vs-toggle-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  user-select: none;
+}
+
+.vs-ked-toggle-btn {
+  position: relative;
+  width: 34px;
+  height: 18px;
+  border-radius: 9px;
+  border: 1px solid rgba(255,255,255,0.18);
+  background: rgba(255,255,255,0.08);
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s;
+  flex-shrink: 0;
+  padding: 0;
+}
+
+.vs-ked-toggle-btn[aria-checked="true"] {
+  background: rgba(255, 180, 40, 0.25);
+  border-color: rgba(255, 180, 40, 0.55);
+}
+
+.vs-ked-toggle-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.45);
+  transition: transform 0.2s, background 0.2s;
+}
+
+.vs-ked-toggle-btn[aria-checked="true"] .vs-ked-toggle-thumb {
+  transform: translateX(16px);
+  background: #ffb428;
+}
+
+/* KED info text */
+.vs-ked-info {
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.5;
+  margin: 0;
+  padding: 6px 8px;
+  background: rgba(255, 180, 40, 0.06);
+  border: 1px solid rgba(255, 180, 40, 0.18);
+  border-radius: 6px;
+}
+
+.ked-raster-overlay {
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+
+/* Apply button when in KED mode */
+.vs-apply-btn.vs-apply-ked {
+  color: #ffb428;
+  border-color: rgba(255, 180, 40, 0.35);
+}
+
+.vs-apply-btn.vs-apply-ked:hover:not(:disabled) {
+  background: rgba(255, 180, 40, 0.08);
+  border-color: rgba(255, 180, 40, 0.65);
+}
+
 /* ── Map cursor when picking observer ── */
 .map-picking-observer #map {
   cursor: crosshair !important;
@@ -4207,6 +4345,45 @@ details[open] .advanced-style-summary::before {
   backdrop-filter: blur(12px);
   user-select: none;
   overflow: hidden;
+}
+
+.pk-panel {
+  width: 330px;
+  max-height: calc(100dvh - 24px);
+  display: flex;
+  flex-direction: column;
+}
+
+.pk-panel .wt-panel-header {
+  flex: 0 0 auto;
+}
+
+.pk-panel .wt-panel-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: none;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+
+.pk-panel-footer {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 14px 14px;
+  border-top: 1px solid var(--border);
+  background: color-mix(in srgb, var(--panel) 92%, transparent);
+}
+
+.compact-grid {
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.pk-aoi-cards {
+  grid-template-columns: 1fr 1fr;
 }
 
 .wt-panel[hidden] {
