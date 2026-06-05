@@ -136,7 +136,7 @@ GeoJSON · KML · Zipped Shapefile
 
 - **Add data** — drag files onto the map, or click the **+** button in the Layers panel and choose *Browse files*.
 - **Create data** — click **+** → *Create new layer*, choose Point / Line / Polygon, then enable edit mode on the new layer.
-- **Layer cards** — use the eye button for visibility, the opacity slider for transparency, the drag handle for ordering, and the layer name to select / zoom the layer.
+- **Layer cards** — use the eye button for visibility, the opacity slider for transparency, the drag handle for ordering, and the layer name to select / zoom the layer. Long layer names and metadata are clipped or wrapped inside the card so the controls remain usable.
 - **Layer actions** — right-click a layer card to zoom, enable / disable editing, style, raster-style, filter, interpolate, heatmap, export, or remove it. Available actions depend on the layer type.
 - **Attribute table** — click a vector layer name to load it in the table. Enable editing with the pencil button before editing cells, deleting rows, or using the field calculator.
 
@@ -207,6 +207,8 @@ Click **Apply Heatmap** to create the raster layer, or **Clear Heatmap** to remo
 
 Viewshed / Diffraction Loss Modelling computes which areas of the terrain are visible from one observer point or from every point in a loaded point vector layer. It can also model KED radio diffraction loss over the same DEM extent for a single observer. Click the **Viewshed / Diffraction Loss Modelling** toolbar button to open the panel.
 
+The panel keeps **Run Viewshed** / **Run KED** visible at the bottom while the settings scroll when the content is taller than the screen.
+
 **Elevation sources**
 
 | Mode | Source | Resolution |
@@ -273,6 +275,8 @@ Watershed analysis delineates upstream drainage basins and extracts stream chann
 ## Peaks & Hills
 
 Peaks & Hills detects terrain summits from a DEM and creates a point layer named *Peaks & Hills*. It uses one summit-detection workflow, then automatically labels stronger local-relief features as *Peak* and lower-relief features as *Hill*.
+
+The panel keeps **Run Peaks & Hills** visible at the bottom while the settings scroll when needed.
 
 **Elevation sources** — Local DEM uses a loaded GeoTIFF raster. Global DEM fetches Terrarium elevation tiles around a picked centre point and radius.
 
