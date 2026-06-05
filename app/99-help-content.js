@@ -246,14 +246,15 @@ const helpPages = {
 <hr/>
 <p><strong>Step 3 — Set the observer source</strong></p>
 <p>Choose <strong>Single Point</strong> to click <strong>Pick from Map</strong>, paste coordinates, and run one viewshed. Choose <strong>Point Layer</strong> to run a batch viewshed from a loaded point vector layer such as GeoJSON, zipped Shapefile, KML, GPX, or CSV-derived points.</p>
-<p>In <strong>Point Layer</strong> mode, select the observer layer, then optionally select a numeric <strong>Radius Field</strong>. If no radius field is selected, enter one <strong>Common Radius</strong> used by all points.</p>
+<p>In <strong>Point Layer</strong> mode, select the observer layer, then optionally select numeric <strong>Radius Field</strong> and <strong>Observer Height Field</strong> values. If a field is not selected, enter one <strong>Common Radius</strong> or <strong>Common Observer Height</strong> used by all points.</p>
 <hr/>
 <p><strong>Step 4 — Configure parameters</strong></p>
 <ul>
-  <li><strong>Observer height</strong> — height of the observer's eyes above the ground (metres). Use 1.7 m for a standing person, 20 m for a tower, etc.</li>
+  <li><strong>Observer height</strong> — single-point mode only. Height of the observer's eyes above the ground (metres). Use 1.7 m for a standing person, 20 m for a tower, etc.</li>
   <li><strong>Target height</strong> — minimum height of a target above ground for it to count as visible (metres). Leave at 0 to test ground-level visibility.</li>
   <li><strong>Max radius</strong> — single-point mode only. Analyse terrain within this distance from the observer (metres). Set to 0 for unlimited extent (local DEM only). Required when using the Global DEM.</li>
   <li><strong>Radius field / Common radius</strong> — point-layer mode only. Use a numeric field for per-point radii, or leave the field empty and enter one radius for all points.</li>
+  <li><strong>Observer height field / Common observer height</strong> — point-layer mode only. Use a numeric field for per-point observer heights, or leave the field empty and enter one height for all points.</li>
   <li><strong>Earth curvature &amp; refraction</strong> — tick this for long-distance analyses (&gt; 5 km). Accounts for the curvature of the Earth and atmospheric bending of light, which would otherwise make distant terrain appear more visible than it really is.</li>
 </ul>
 <hr/>
@@ -273,7 +274,7 @@ const helpPages = {
 <p><strong>Reading the result</strong></p>
 <ul>
   <li><strong>Green areas</strong> — terrain visible from the observer point.</li>
-  <li><strong>Point-layer results</strong> — each visible polygon part is stored as a separate feature, and every observer is stored as its own <code>view_point</code> feature with <code>observer_id</code> and <code>radius_m</code> attributes.</li>
+  <li><strong>Point-layer results</strong> — each visible polygon part is stored as a separate feature, and every observer is stored as its own <code>view_point</code> feature with <code>observer_id</code>, <code>radius_m</code>, and <code>observer_height_m</code> attributes.</li>
   <li><strong>Transparent areas</strong> — terrain hidden from view (behind hills or ridges).</li>
   <li><strong>KED raster colors</strong> — fully opaque red means the highest received signal. Weaker / higher-loss cells fade toward transparency.</li>
 </ul>

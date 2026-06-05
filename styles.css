@@ -3895,6 +3895,10 @@ details[open] .advanced-style-summary::before {
   display: none;
 }
 
+.vs-panel [hidden] {
+  display: none !important;
+}
+
 /* ── Header / drag handle ── */
 .vs-panel-header {
   display: flex;

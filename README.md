@@ -223,9 +223,9 @@ When *Use Global DEM* is ticked the app fetches RGB-encoded Terrarium elevation 
 **Observer sources**
 
 - **Single Point** — pick a point on the map or paste `lat, lng`, then set **Max Radius** for that observer. A radius of `0` means unlimited for a local DEM; Global DEM requires a radius.
-- **Point Layer** — select a loaded point vector layer such as GeoJSON, zipped Shapefile, KML, GPX, or CSV-derived points. Optionally select a numeric **Radius Field** to use a different radius for each point. If no radius field is selected, enter one **Common Radius** used by all points.
+- **Point Layer** — select a loaded point vector layer such as GeoJSON, zipped Shapefile, KML, GPX, or CSV-derived points. Optionally select numeric **Radius Field** and **Observer Height Field** values for per-point ranges and observer heights. If a field is not selected, enter a **Common Radius** or **Common Observer Height** used by all points.
 
-**Output** — A vector overlay layer named *Viewshed* is added to the map. Visible terrain is painted in semi-transparent green (`rgba(0, 255, 120, 0.45)`). In point-layer mode, each visible polygon part is stored as its own feature with `observer_id`, `radius_m`, and source-point fields, and each observer is stored as a separate `view_point` feature. Invalid points or invalid radius values are skipped and reported in the status message.
+**Output** — A vector overlay layer named *Viewshed* is added to the map. Visible terrain is painted in semi-transparent green (`rgba(0, 255, 120, 0.45)`). In point-layer mode, each visible polygon part is stored as its own feature with `observer_id`, `radius_m`, `observer_height_m`, and source-point fields, and each observer is stored as a separate `view_point` feature. Invalid points or invalid radius / observer-height values are skipped and reported in the status message.
 
 **KED diffraction mode** — Toggle *Multiple Knife-Edge Diffraction* in the Viewshed / Diffraction Loss Modelling panel, then keep the same elevation source, observer point, observer height, and maximum radius settings used for viewshed. Click *Run KED* to create a separate raster layer named *KED Diffraction Loss*.
 

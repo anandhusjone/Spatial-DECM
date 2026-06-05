@@ -39,6 +39,7 @@
   const demSelectWrap = document.getElementById("vs-dem-select-wrap");
   const demSrcCtrl    = document.getElementById("vs-dem-source-ctrl");
   const obsHeightInp  = document.getElementById("vs-observer-height");
+  const singleObsHeightWrap = document.getElementById("vs-single-obs-height-wrap");
   const tgtHeightInp  = document.getElementById("vs-target-height");
   const maxRadiusInp  = document.getElementById("vs-max-radius");
   const singleRadiusWrap = document.getElementById("vs-single-radius-wrap");
@@ -49,8 +50,11 @@
   const pointLayerWrap = document.getElementById("vs-point-layer-wrap");
   const pointLayerSelect = document.getElementById("vs-point-layer-select");
   const radiusFieldSelect = document.getElementById("vs-radius-field-select");
+  const heightFieldSelect = document.getElementById("vs-height-field-select");
   const batchRadiusInp = document.getElementById("vs-batch-radius");
   const batchRadiusWrap = document.getElementById("vs-batch-radius-wrap");
+  const batchObsHeightInp = document.getElementById("vs-batch-observer-height");
+  const batchHeightWrap = document.getElementById("vs-batch-height-wrap");
   const pickBtn       = document.getElementById("vs-pick-btn");
   const coordsDisplay = document.getElementById("vs-coords-display");
   const clearObsBtn   = document.getElementById("vs-clear-obs-btn");
@@ -60,6 +64,7 @@
   const applyBtn      = document.getElementById("vs-apply-btn");
 
   // KED refs
+  const kedToggleRow  = document.getElementById("vs-ked-toggle-row");
   const kedToggleBtn  = document.getElementById("vs-ked-toggle");
   const kedParams     = document.getElementById("vs-ked-params");
   const kedFreqInp    = document.getElementById("vs-ked-frequency");
@@ -163,6 +168,7 @@
   // ── KED toggle ────────────────────────────────────────────────
 
   function setKedEnabled(active) {
+    if (observerSource === "layer") active = false;
     kedEnabled = active;
     kedToggleBtn.setAttribute("aria-checked", active ? "true" : "false");
     kedParams.classList.toggle("is-open", active);
@@ -303,12 +309,10 @@
       pointLayerSelect.value = "";
     }
     populateRadiusFieldSelect();
+    populateHeightFieldSelect();
   }
 
-  function populateRadiusFieldSelect() {
-    if (!radiusFieldSelect || !pointLayerSelect) return;
-    const currentValue = radiusFieldSelect.value;
-    const layerRecord = loadedLayers.find((lr) => lr.id === pointLayerSelect.value);
+  function getNumericPointFields(layerRecord, isValidValue) {
     const numericFields = [];
     const fields = typeof collectFieldNamesFromGeoJSON === "function"
       ? collectFieldNamesFromGeoJSON(layerRecord?.geojson)
@@ -316,27 +320,51 @@
     const pointFeatures = getPointFeatures(layerRecord);
 
     fields.forEach((field) => {
-      const hasNumericRadius = pointFeatures.some((feature) => {
+      const hasNumericValue = pointFeatures.some((feature) => {
         const value = Number(feature?.properties?.[field]);
-        return Number.isFinite(value) && value > 0;
+        return Number.isFinite(value) && isValidValue(value);
       });
-      if (hasNumericRadius) numericFields.push(field);
+      if (hasNumericValue) numericFields.push(field);
     });
 
-    radiusFieldSelect.innerHTML =
-      '<option value="">Use one radius for all points</option>' +
+    return numericFields;
+  }
+
+  function populateNumericFieldSelect(selectEl, emptyLabel, isValidValue) {
+    if (!selectEl || !pointLayerSelect) return;
+    const currentValue = selectEl.value;
+    const layerRecord = loadedLayers.find((lr) => lr.id === pointLayerSelect.value);
+    const numericFields = getNumericPointFields(layerRecord, isValidValue);
+
+    selectEl.innerHTML =
+      `<option value="">${emptyLabel}</option>` +
       numericFields
         .map((field) => `<option value="${escapeHtml(field)}"${field === currentValue ? " selected" : ""}>${escapeHtml(field)}</option>`)
         .join("");
     if (currentValue && !numericFields.includes(currentValue)) {
-      radiusFieldSelect.value = "";
+      selectEl.value = "";
     }
+  }
+
+  function populateRadiusFieldSelect() {
+    populateNumericFieldSelect(radiusFieldSelect, "Use one radius for all points", (value) => value > 0);
     updateBatchRadiusVisibility();
+  }
+
+  function populateHeightFieldSelect() {
+    populateNumericFieldSelect(heightFieldSelect, "Use one height for all points", (value) => value >= 0);
+    updateBatchHeightVisibility();
   }
 
   function updateBatchRadiusVisibility() {
     if (!batchRadiusWrap || !radiusFieldSelect) return;
     batchRadiusWrap.hidden = Boolean(radiusFieldSelect.value);
+    clampPanelAfterLayout();
+  }
+
+  function updateBatchHeightVisibility() {
+    if (!batchHeightWrap || !heightFieldSelect) return;
+    batchHeightWrap.hidden = Boolean(heightFieldSelect.value);
     clampPanelAfterLayout();
   }
 
@@ -382,10 +410,13 @@
 
     if (singleObserverWrap) singleObserverWrap.hidden = observerSource !== "single";
     if (singleRadiusWrap) singleRadiusWrap.hidden = observerSource !== "single";
+    if (singleObsHeightWrap) singleObsHeightWrap.hidden = observerSource !== "single";
+    if (kedToggleRow) kedToggleRow.hidden = observerSource !== "single";
     if (pointLayerWrap) pointLayerWrap.classList.toggle("is-open", observerSource === "layer");
     if (observerSource === "layer") {
       if (isPicking) cancelPicking();
       if (radiusCircle) { map.removeLayer(radiusCircle); radiusCircle = null; }
+      setKedEnabled(false);
       populatePointLayerSelect();
     } else {
       updateRadiusCircle();
@@ -401,6 +432,8 @@
 
   pointLayerSelect?.addEventListener("change", populateRadiusFieldSelect);
   radiusFieldSelect?.addEventListener("change", updateBatchRadiusVisibility);
+  pointLayerSelect?.addEventListener("change", populateHeightFieldSelect);
+  heightFieldSelect?.addEventListener("change", updateBatchHeightVisibility);
 
   // ── Terrarium tile helpers ─────────────────────────────────────
   // Moved to app/dem-utils.js (loaded before this script).
@@ -569,12 +602,6 @@
       return false;
     }
 
-    const obsH = Number(obsHeightInp.value);
-    if (!Number.isFinite(obsH) || obsH < 0) {
-      showError("Observer height must be a non-negative number.");
-      return false;
-    }
-
     const tgtH = Number(tgtHeightInp.value);
     if (!Number.isFinite(tgtH) || tgtH < 0) {
       showError("Target height must be a non-negative number.");
@@ -590,6 +617,13 @@
         showError("Select a point vector layer for the observer source.");
         return false;
       }
+      if (!heightFieldSelect?.value) {
+        const batchH = Number(batchObsHeightInp?.value);
+        if (!Number.isFinite(batchH) || batchH < 0) {
+          showError("Enter a common observer height of 0 m or greater, or select a numeric observer height field.");
+          return false;
+        }
+      }
       if (!radiusFieldSelect?.value) {
         const batchR = Number(batchRadiusInp?.value);
         if (!Number.isFinite(batchR) || batchR <= 0) {
@@ -603,6 +637,12 @@
       }
       return true;
     } else {
+      const obsH = Number(obsHeightInp.value);
+      if (!Number.isFinite(obsH) || obsH < 0) {
+        showError("Observer height must be a non-negative number.");
+        return false;
+      }
+
       const maxR = Number(maxRadiusInp.value);
       if (!Number.isFinite(maxR) || maxR < 0) {
         showError("Max radius must be a non-negative number (0 = unlimited).");
@@ -678,14 +718,21 @@
   function getBatchObservers() {
     const layerRecord = loadedLayers.find((lr) => lr.id === pointLayerSelect?.value);
     const radiusField = radiusFieldSelect?.value || "";
+    const heightField = heightFieldSelect?.value || "";
     const commonRadius = Number(batchRadiusInp?.value);
+    const commonObsHeight = Number(batchObsHeightInp?.value);
     const observers = [];
     let skipped = 0;
 
     getPointFeatures(layerRecord).forEach((feature, featureIndex) => {
       const props = feature.properties || {};
       const radius = radiusField ? Number(props[radiusField]) : commonRadius;
+      const obsH = heightField ? Number(props[heightField]) : commonObsHeight;
       if (!Number.isFinite(radius) || radius <= 0) {
+        skipped += 1;
+        return;
+      }
+      if (!Number.isFinite(obsH) || obsH < 0) {
         skipped += 1;
         return;
       }
@@ -708,6 +755,7 @@
           id: observers.length + 1,
           latlng: L.latLng(lat, lng),
           radius,
+          obsH,
           sourceFeatureIndex: featureIndex,
           sourcePointIndex: coordIndex,
           sourceLabel,
@@ -716,7 +764,7 @@
       });
     });
 
-    return { layerRecord, observers, skipped, radiusField };
+    return { layerRecord, observers, skipped, radiusField, heightField };
   }
 
   // ── Progress UI ───────────────────────────────────────────────
@@ -1400,6 +1448,7 @@
           observer_id: observer.id,
           part_index: partIndex + 1,
           radius_m: observer.radius,
+          observer_height_m: observer.obsH,
           source_index: observer.sourceFeatureIndex + 1,
           source_point_index: observer.sourcePointIndex + 1,
           source_label: observer.sourceLabel,
@@ -1421,6 +1470,7 @@
         observer_id: observer.id,
         part_index: null,
         radius_m: observer.radius,
+        observer_height_m: observer.obsH,
         source_index: observer.sourceFeatureIndex + 1,
         source_point_index: observer.sourcePointIndex + 1,
         source_label: observer.sourceLabel,
@@ -1468,6 +1518,7 @@
           `<strong>${escapeHtml(feature.properties.label || "View point")}</strong><br>` +
           `Source: ${escapeHtml(feature.properties.source_label || "")}<br>` +
           `Radius: ${Number(feature.properties.radius_m).toFixed(0)} m<br>` +
+          `Observer height: ${Number(feature.properties.observer_height_m).toFixed(1)} m<br>` +
           `Status: ${escapeHtml(feature.properties.status || "ok")}`
         );
         marker.feature = feature;
@@ -1486,7 +1537,8 @@
             layer.bindPopup(
               `<strong>${escapeHtml(ft.properties.label || "Viewshed area")}</strong><br>` +
               `Source: ${escapeHtml(ft.properties.source_label || "")}<br>` +
-              `Radius: ${Number(ft.properties.radius_m).toFixed(0)} m`
+              `Radius: ${Number(ft.properties.radius_m).toFixed(0)} m<br>` +
+              `Observer height: ${Number(ft.properties.observer_height_m).toFixed(1)} m`
             );
           },
         });
@@ -1506,6 +1558,7 @@
       geojson,
       fields: [
         "type", "label", "observer_id", "part_index", "radius_m",
+        "observer_height_m",
         "source_index", "source_point_index", "source_label", "lat", "lng", "status", "note",
       ],
       crs: CRSManager.DEFAULT_CRS,
@@ -1731,7 +1784,7 @@
           width: demResult.width,
           height: demResult.height,
           transform: demResult.transform,
-          obsH,
+          obsH: observer.obsH,
           tgtH,
           curvature,
           cellSizeX: demResult.cellSizeX,
@@ -1745,7 +1798,7 @@
           width: localDem.width,
           height: localDem.height,
           transform: localDem.transform,
-          obsH,
+          obsH: observer.obsH,
           tgtH,
           curvature,
           cellSizeX: sizes.cellSizeX,

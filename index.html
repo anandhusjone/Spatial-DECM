@@ -558,7 +558,7 @@
         <div class="wt-divider"></div>
 
         <div class="vs-row">
-          <label class="vs-field-stack">
+          <label class="vs-field-stack" id="vs-single-obs-height-wrap">
             <span class="vs-label">Observer Height</span>
             <div class="vs-unit-input">
               <input id="vs-observer-height" class="dark-input" type="number" min="0" max="9999" step="0.1" value="1.7" inputmode="decimal">
@@ -597,7 +597,7 @@
         </div>
 
         <!-- Knife-Edge Diffraction toggle -->
-        <div class="vs-ked-toggle-row">
+        <div class="vs-ked-toggle-row" id="vs-ked-toggle-row">
           <label class="vs-toggle-label" for="vs-ked-toggle">
             <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
@@ -676,6 +676,19 @@
               <select id="vs-radius-field-select" class="dark-input wt-select">
                 <option value="">Use one radius for all points</option>
               </select>
+            </label>
+            <label class="vs-field-stack">
+              <span class="vs-label">Observer Height Field <span class="vs-label-hint">(optional)</span></span>
+              <select id="vs-height-field-select" class="dark-input wt-select">
+                <option value="">Use one height for all points</option>
+              </select>
+            </label>
+            <label class="vs-field-stack" id="vs-batch-height-wrap">
+              <span class="vs-label">Common Observer Height</span>
+              <div class="vs-unit-input">
+                <input id="vs-batch-observer-height" class="dark-input" type="number" min="0" max="9999" step="0.1" value="1.7" inputmode="decimal">
+                <span class="vs-unit">m</span>
+              </div>
             </label>
             <label class="vs-field-stack" id="vs-batch-radius-wrap">
               <span class="vs-label">Common Radius</span>
