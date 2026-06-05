@@ -36,6 +36,7 @@ const helpPages = {
   <li>Drag the handle to reorder layers</li>
   <li>Use the opacity slider to fade the layer</li>
   <li>Click the layer name to select it in the attribute table and zoom to it</li>
+  <li>Long names and metadata stay clipped or wrapped inside the card so controls remain accessible</li>
   <li>Right-click the card for more actions — see below</li>
 </ul>
 <p><strong>Right-click menu actions (vary by layer type):</strong></p>
@@ -231,10 +232,10 @@ const helpPages = {
 <p><em>Note: styles, labels, and filters are not saved inside the exported file — only the geometry and attribute data.</em></p>`,
 
   viewshed: `<h3>Viewshed / Diffraction Loss Modelling</h3>
-<p>Viewshed / Diffraction Loss Modelling shows which areas on the ground are <strong>visible</strong> from a chosen observer point and can model radio diffraction loss across terrain. Visible areas are highlighted in green on the map.</p>
+<p>Viewshed / Diffraction Loss Modelling shows which areas on the ground are <strong>visible</strong> from a single observer point or from every point in a loaded point vector layer. It can also model radio diffraction loss across terrain for a single observer. Visible areas are highlighted in green on the map.</p>
 <hr/>
 <p><strong>Step 1 — Open the panel</strong></p>
-<p>Click <strong>Viewshed / Diffraction Loss Modelling</strong> button in the toolbar (eye-with-rays icon). A floating panel appears. You can drag it by its title bar to reposition it on the map.</p>
+<p>Click <strong>Viewshed / Diffraction Loss Modelling</strong> button in the toolbar (eye-with-rays icon). A floating panel appears. You can drag it by its title bar to reposition it on the map. The run button stays visible at the bottom while settings scroll if the panel becomes tall.</p>
 <hr/>
 <p><strong>Step 2 — Choose an elevation source</strong></p>
 <p>There are two options:</p>
@@ -316,7 +317,7 @@ const helpPages = {
 <p>The Peaks &amp; Hills tool finds terrain summits from a DEM and creates a point layer named <strong>Peaks &amp; Hills</strong>. It uses one summit-detection workflow and automatically labels stronger summits as Peaks and lower-relief summits as Hills.</p>
 <hr/>
 <p><strong>Step 1 — Open the panel</strong></p>
-<p>Click the Peaks &amp; Hills mountain button in the map toolbar. A floating panel appears.</p>
+<p>Click the Peaks &amp; Hills mountain button in the map toolbar. A floating panel appears. The run button stays visible at the bottom while settings scroll if the panel becomes tall.</p>
 <hr/>
 <p><strong>Step 2 — Choose an elevation source</strong></p>
 <ul>
