@@ -271,41 +271,94 @@
               </button>
             </div>
           </div>
-          <div class="map-tools-dock">
-            <button id="locate-btn" class="map-tool-btn" type="button" title="Find my location" aria-label="Find my location">
-              <svg xmlns="http://www.w3.org/2000/svg" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <circle cx="12" cy="12" r="3"/><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/>
+          <!-- Hidden proxy buttons — JS files bind to these IDs; the
+               tools-picker rows click() them to trigger their handlers. -->
+          <div class="visually-hidden" aria-hidden="true">
+            <button id="locate-btn"   class="map-tool-btn" type="button" aria-pressed="false"></button>
+            <button id="measure-btn"  class="map-tool-btn" type="button" aria-pressed="false"></button>
+            <button id="viewshed-btn" class="map-tool-btn" type="button" aria-pressed="false"></button>
+            <button id="watershed-btn"class="map-tool-btn" type="button" aria-pressed="false"></button>
+            <button id="peaks-btn"    class="map-tool-btn" type="button" aria-pressed="false"></button>
+          </div>
+
+          <!-- Tools picker — styled like the basemap picker -->
+          <div class="tools-picker" id="tools-picker">
+            <button id="tools-switcher-btn" class="ghost-button floating-tools-btn" type="button"
+                    title="Map tools" aria-label="Map tools" aria-haspopup="listbox" aria-expanded="false">
+              <!-- wrench / tools icon -->
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
               </svg>
             </button>
-            <button id="measure-btn" class="map-tool-btn" type="button" title="Measure distance / area" aria-label="Measure distance or area" aria-pressed="false">
-              <svg xmlns="http://www.w3.org/2000/svg" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <polyline points="3 17 7 13 11 15 17 9 21 13"/><line x1="3" y1="21" x2="21" y2="21"/><line x1="3" y1="21" x2="3" y2="3"/>
-              </svg>
-            </button>
-            <button id="viewshed-btn" class="map-tool-btn" type="button" title="Viewshed / Diffraction Loss Modelling" aria-label="Open Viewshed / Diffraction Loss Modelling panel" aria-pressed="false">
-              <svg xmlns="http://www.w3.org/2000/svg" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
-                <circle cx="12" cy="12" r="3"/>
-                <line x1="12" y1="2" x2="12" y2="5"/>
-                <line x1="12" y1="19" x2="12" y2="22"/>
-                <line x1="2" y1="12" x2="5" y2="12"/>
-                <line x1="19" y1="12" x2="22" y2="12"/>
-              </svg>
-            </button>
-            <button id="watershed-btn" class="map-tool-btn" type="button" title="Watershed &amp; Channel Extraction" aria-label="Open watershed analysis panel" aria-pressed="false">
-              <svg xmlns="http://www.w3.org/2000/svg" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <path d="M12 2 C8 6 4 8 4 13 a8 8 0 0 0 16 0 C20 8 16 6 12 2z"/>
-                <path d="M12 8 C10 11 8 13 8 15"/>
-                <path d="M12 8 C14 11 16 13 16 15"/>
-              </svg>
-            </button>
-            <button id="peaks-btn" class="map-tool-btn" type="button" title="Peak &amp; Hill Detection" aria-label="Open peak and hill detection panel" aria-pressed="false">
-              <svg xmlns="http://www.w3.org/2000/svg" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <path d="M3 19h18"/>
-                <path d="M4 17 9 7l4 6 3-8 5 12"/>
-                <circle cx="16" cy="5" r="1.5"/>
-              </svg>
-            </button>
+            <div class="tools-dropdown" id="tools-dropdown" role="listbox" aria-label="Select tool" hidden>
+              <p class="tools-dropdown-header">Map Tools</p>
+
+              <button class="tool-option" data-tool="locate" role="option" type="button" aria-selected="false">
+                <span class="tool-icon-wrap">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <circle cx="12" cy="12" r="3"/><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/>
+                  </svg>
+                </span>
+                <span class="tool-info">
+                  <span class="tool-name">Locate</span>
+                  <span class="tool-desc">Find my location</span>
+                </span>
+              </button>
+
+              <button class="tool-option" data-tool="measure" role="option" type="button" aria-selected="false">
+                <span class="tool-icon-wrap">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <polyline points="3 17 7 13 11 15 17 9 21 13"/><line x1="3" y1="21" x2="21" y2="21"/><line x1="3" y1="21" x2="3" y2="3"/>
+                  </svg>
+                </span>
+                <span class="tool-info">
+                  <span class="tool-name">Measure</span>
+                  <span class="tool-desc">Distance &amp; area</span>
+                </span>
+              </button>
+
+              <button class="tool-option" data-tool="viewshed" role="option" type="button" aria-selected="false">
+                <span class="tool-icon-wrap">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                    <circle cx="12" cy="12" r="3"/>
+                    <line x1="12" y1="2" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="22"/>
+                    <line x1="2" y1="12" x2="5" y2="12"/><line x1="19" y1="12" x2="22" y2="12"/>
+                  </svg>
+                </span>
+                <span class="tool-info">
+                  <span class="tool-name">Viewshed</span>
+                  <span class="tool-desc">Diffraction loss modelling</span>
+                </span>
+              </button>
+
+              <button class="tool-option" data-tool="watershed" role="option" type="button" aria-selected="false">
+                <span class="tool-icon-wrap">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M12 2 C8 6 4 8 4 13 a8 8 0 0 0 16 0 C20 8 16 6 12 2z"/>
+                    <path d="M12 8 C10 11 8 13 8 15"/><path d="M12 8 C14 11 16 13 16 15"/>
+                  </svg>
+                </span>
+                <span class="tool-info">
+                  <span class="tool-name">Watershed</span>
+                  <span class="tool-desc">Channel extraction</span>
+                </span>
+              </button>
+
+              <button class="tool-option" data-tool="peaks" role="option" type="button" aria-selected="false">
+                <span class="tool-icon-wrap">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M3 19h18"/>
+                    <path d="M4 17 9 7l4 6 3-8 5 12"/>
+                    <circle cx="16" cy="5" r="1.5"/>
+                  </svg>
+                </span>
+                <span class="tool-info">
+                  <span class="tool-name">Peaks</span>
+                  <span class="tool-desc">Hill &amp; peak detection</span>
+                </span>
+              </button>
+            </div>
           </div>
           <div id="map"></div>
           <div id="map-coord-pill" class="map-coord-pill" aria-live="polite" aria-label="Pointer coordinates">

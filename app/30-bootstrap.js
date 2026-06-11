@@ -465,6 +465,80 @@ themeCycleBtn.addEventListener("click", () => {
   }
 }());
 
+// ── Tools picker ──────────────────────────────────────────────────────────────
+(function () {
+  const picker     = document.getElementById("tools-picker");
+  const triggerBtn = document.getElementById("tools-switcher-btn");
+  const dropdown   = document.getElementById("tools-dropdown");
+  const options    = dropdown.querySelectorAll(".tool-option");
+
+  // Map data-tool → proxy button id
+  const TOOL_BTN = {
+    locate:    "locate-btn",
+    measure:   "measure-btn",
+    viewshed:  "viewshed-btn",
+    watershed: "watershed-btn",
+    peaks:     "peaks-btn",
+  };
+
+  function openPicker() {
+    dropdown.hidden = false;
+    triggerBtn.setAttribute("aria-expanded", "true");
+    syncSelected();
+  }
+
+  function closePicker() {
+    dropdown.hidden = true;
+    triggerBtn.setAttribute("aria-expanded", "false");
+  }
+
+  function syncSelected() {
+    options.forEach((opt) => {
+      const proxyBtn = document.getElementById(TOOL_BTN[opt.dataset.tool]);
+      const isActive = proxyBtn && proxyBtn.getAttribute("aria-pressed") === "true";
+      opt.setAttribute("aria-selected", String(isActive));
+    });
+  }
+
+  triggerBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    dropdown.hidden ? openPicker() : closePicker();
+  });
+
+  document.addEventListener("click", (e) => {
+    if (!picker.contains(e.target)) closePicker();
+  });
+
+  dropdown.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") { closePicker(); triggerBtn.focus(); }
+  });
+
+  options.forEach((opt) => {
+    opt.addEventListener("click", () => {
+      const proxyBtn = document.getElementById(TOOL_BTN[opt.dataset.tool]);
+      if (proxyBtn) proxyBtn.click();
+      // Re-sync active state after a tick so JS handlers can update aria-pressed
+      setTimeout(syncSelected, 50);
+      // Only close for one-shot tools (locate); keep open for toggle tools
+      if (opt.dataset.tool === "locate") closePicker();
+    });
+  });
+
+  // Keep picker in sync whenever proxy button aria-pressed changes (MutationObserver)
+  Object.values(TOOL_BTN).forEach((id) => {
+    const btn = document.getElementById(id);
+    if (!btn) return;
+    new MutationObserver(() => {
+      if (!dropdown.hidden) syncSelected();
+      // Mirror active state onto the trigger icon button
+      const anyActive = Object.values(TOOL_BTN).some(
+        (bid) => document.getElementById(bid)?.getAttribute("aria-pressed") === "true"
+      );
+      triggerBtn.classList.toggle("is-active", anyActive);
+    }).observe(btn, { attributes: true, attributeFilter: ["aria-pressed"] });
+  });
+}());
+
 // ── Global DEM (Terrarium) toggle ─────────────────────────────────────────────
 (function () {
   const TERRARIUM_URL = "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png";

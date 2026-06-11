@@ -545,7 +545,7 @@ function isEditableLayerRecord(layerRecord) {
 
 function getStoredThemePreference() {
   const storedPreference = localStorage.getItem(THEME_STORAGE_KEY);
-  if (storedPreference === "dark" || storedPreference === "light" || storedPreference === "system") {
+  if (storedPreference === "dark" || storedPreference === "light" || storedPreference === "glass" || storedPreference === "system") {
     return storedPreference;
   }
 
@@ -553,7 +553,7 @@ function getStoredThemePreference() {
 }
 
 function getResolvedTheme(themePreference) {
-  if (themePreference === "dark" || themePreference === "light") {
+  if (themePreference === "dark" || themePreference === "light" || themePreference === "glass") {
     return themePreference;
   }
 
@@ -658,8 +658,22 @@ const basemapTileTemplates = {
 function applyTheme(themePreference) {
   const resolvedTheme = getResolvedTheme(themePreference);
   document.documentElement.dataset.theme = resolvedTheme;
-  applyAppBasemap(resolvedTheme);
+  // For glass mode, use satellite basemap by default for a rich background
+  if (resolvedTheme === "glass") {
+    applyAppBasemap("satellite");
+  } else {
+    applyAppBasemap(resolvedTheme === "light" ? "light" : "dark");
+  }
   themeCycleBtn.textContent = `${themePreference.charAt(0).toUpperCase()}${themePreference.slice(1)}`;
+  // Re-run the logo animation whenever the theme changes so the glass
+  // gradient and the neon flicker are always in sync with the active theme.
+  if (brandLogoShell && brandLogoShell.querySelector("svg")) {
+    animateBrandLogo(brandLogoShell);
+  }
+  // Glass sets #map to position:fixed inset:0; other themes restore it to its
+  // grid slot. Either way Leaflet's cached container size is stale after the
+  // CSS change. One rAF lets the layout pass complete before we re-measure.
+  requestAnimationFrame(() => map.invalidateSize());
 }
 
 function initializeTheme() {
@@ -672,7 +686,11 @@ function getNextThemePreference(currentTheme) {
   }
 
   if (currentTheme === "light") {
-    return "system";
+    return "glass";
+  }
+
+  if (currentTheme === "glass") {
+    return "dark";
   }
 
   return "dark";
@@ -786,151 +804,250 @@ const INLINE_BRAND_LOGO = `
 function animateBrandLogo(shell) {
   if (!shell) return;
 
-  // ── Ensure the path and shell are fully static ─────────────────────────
-  // Remove any previous anime tweens so they can't fight the glow driver.
+  // Stop any previously running animation on this shell.
+  if (typeof shell._stopLogoAnim === "function") shell._stopLogoAnim();
+
+  // Remove any previous anime tweens so they can't fight the animation driver.
   if (typeof anime !== "undefined") anime.remove([shell, shell.querySelector("path")]);
 
-  // Lock path opacity and shell scale — only the glow moves.
-  const path = shell.querySelector("path");
-  if (path) path.style.opacity = "1";
-  shell.style.transform = "none";
+  const isGlass = document.documentElement.dataset.theme === "glass";
 
-  // ── Neon sign glow state machine ───────────────────────────────────────
-  //
-  // States and their visual profile:
-  //   full    — tube fully energised, strong warm bloom
-  //   dim     — partially lit, muted glow, desaturated orange
-  //   flicker — rapid voltage instability before settling
-  //   off     — tube dark, no glow at all
-  //   surge   — momentary over-voltage spike, extra-bright
-  //
-  // The shell's filter is set directly; no CSS transition is used so that
-  // hard cuts (like real neon) feel instant while slow settling is emulated
-  // by stepping through intermediate values in setInterval loops.
+  if (isGlass) {
+    // ── Glass mode: lava-lamp colour animation ──────────────────────────
+    //
+    // A lava lamp has no fixed direction or period — blobs of colour pool,
+    // swell, and drift at slightly different tempos so the motion never
+    // feels mechanical or repetitive.
+    //
+    // Technique: keep the gradient fixed in bounding-box space (0→1 across
+    // the path) and animate only the STOP OFFSETS each frame. Each of the
+    // four stops is driven by two independent sine oscillators with
+    // incommensurable periods (irrational ratio φ ≈ 1.618) so the pattern
+    // never exactly repeats. A fifth slow oscillator modulates the opacity
+    // of the middle stops, giving the "heated wax" breath effect.
+    //
+    // Colours:
+    //   stop 0  #00f0ff  neon cyan
+    //   stop 1  #b44dff  neon purple
+    //   stop 2  #ff2ef0  neon magenta-pink
+    //   stop 3  #00f0ff  back to cyan (keeps edges anchored)
 
-  const COLOR_FULL    = "242, 110, 34";   // warm orange  — fully ionised
-  const COLOR_DIM     = "210,  90, 20";   // slightly cooler, less saturated
-  const COLOR_SURGE   = "255, 140, 60";   // hot white-orange surge
+    const svg  = shell.querySelector("svg");
+    if (!svg) return;
+    const path = shell.querySelector("path");
+    if (!path) return;
 
-  // Build a drop-shadow filter string from intensity (0–1) and a colour triplet.
-  // Grab the parent stage so we can animate its box-shadow instead of
-  // using filter:drop-shadow on the shell. drop-shadow bleeds outside the
-  // stage's border-radius and paints artefacts on surrounding elements.
-  // box-shadow is fully contained within the stage's border-box.
-  const stage = shell.closest(".brand-wordmark-stage") || shell.parentElement;
-
-  const BASE_SHADOW =
-    "inset 0 1px 0 rgba(242,110,34,0.12), inset 0 -1px 0 rgba(0,0,0,0.22), 0 2px 6px rgba(0,0,0,0.28)";
-
-  function applyGlow(intensity, colorRgb) {
-    // Always keep the shell filter neutral — no drop-shadow here.
-    shell.style.filter = "";
-    const clamped = Math.max(0, intensity);
-    if (clamped <= 0) {
-      stage.style.boxShadow = BASE_SHADOW;
-      return;
+    let defs = svg.querySelector("defs");
+    if (!defs) {
+      defs = document.createElementNS("http://www.w3.org/2000/svg", "defs");
+      svg.insertBefore(defs, svg.firstChild);
     }
-    // Inset glow hugs the inner edge of the stage — contained, never bleeds.
-    const a1 = (0.6  * clamped).toFixed(3);
-    const a2 = (0.25 * clamped).toFixed(3);
-    const r1 = Math.round(6  * clamped);
-    const r2 = Math.round(14 * clamped);
-    stage.style.boxShadow = [
-      BASE_SHADOW,
-      `inset 0 0 ${r1}px rgba(${colorRgb},${a1})`,
-      `inset 0 0 ${r2}px rgba(${colorRgb},${a2})`,
-    ].join(", ");
-  }
+    const staleGrad = defs.querySelector("#_glass-logo-grad");
+    if (staleGrad) staleGrad.remove();
 
-  // ── State definitions ────────────────────────────────────────────────
-  // Each state returns a promise that resolves when it's done so the loop
-  // can await it naturally.
+    const grad = document.createElementNS("http://www.w3.org/2000/svg", "linearGradient");
+    grad.setAttribute("id", "_glass-logo-grad");
+    grad.setAttribute("gradientUnits", "objectBoundingBox");
+    grad.setAttribute("x1", "0"); grad.setAttribute("y1", "0");
+    grad.setAttribute("x2", "1"); grad.setAttribute("y2", "0");
 
-  function rand(min, max) {
-    return min + Math.random() * (max - min);
-  }
-  function delay(ms) {
-    return new Promise(r => setTimeout(r, ms));
-  }
+    const STOP_COLORS = ["#00f0ff", "#b44dff", "#ff2ef0", "#00f0ff"];
+    const stopEls = STOP_COLORS.map(color => {
+      const s = document.createElementNS("http://www.w3.org/2000/svg", "stop");
+      s.setAttribute("stop-color", color);
+      grad.appendChild(s);
+      return s;
+    });
+    defs.appendChild(grad);
+    path.setAttribute("fill", "url(#_glass-logo-grad)");
 
-  async function stateFull() {
+    const stage = shell.closest(".brand-wordmark-stage") || shell.parentElement;
+    const GLASS_BASE_SHADOW =
+      "inset 0 1px 0 rgba(255,255,255,0.10), inset 0 -1px 0 rgba(0,0,0,0.10)";
+
+    // ── Oscillator parameters ────────────────────────────────────────────
+    // Each stop has two sine waves summed together; periods are chosen so
+    // no two stops share a common cycle length → permanently aperiodic.
+    // All periods in ms. φ ≈ 1.618 keeps the ratios irrational.
+    // "center" = resting offset (0–1), "amp" = max deviation each wave.
+
+    const φ = 1.6180339887;
+    const OSC = [
+      // stop 0 — cyan anchor, breathes softly near left edge
+      { center: 0.05, amp: 0.06, p1:  7000,        ph1: 0.00,
+                                  p2:  7000 * φ,    ph2: 1.10 },
+      // stop 1 — purple blob, drifts lazily across the left-centre
+      { center: 0.35, amp: 0.28, p1: 11000,         ph1: 0.80,
+                                  p2: 11000 * φ,    ph2: 2.30 },
+      // stop 2 — magenta blob, drifts in the right-centre at a different tempo
+      { center: 0.65, amp: 0.28, p1: 13000,         ph1: 1.60,
+                                  p2: 13000 * φ,    ph2: 0.50 },
+      // stop 3 — cyan anchor, breathes softly near right edge
+      { center: 0.95, amp: 0.06, p1:  9000,         ph1: 0.40,
+                                  p2:  9000 * φ,    ph2: 3.00 },
+    ];
+
+    // Slow glow oscillator — pulses the stage shadow for a "breathing" feel.
+    // Stop opacities are kept at 1.0 at all times; opacity modulation caused
+    // the middle stops to fade out, leaving two cyan anchors with nothing
+    // between them → hard cyan-to-cyan transition. Position drift alone gives
+    // the lava-lamp feel without any opacity artefact.
+    const GLOW_OSC = { amp: 0.20, center: 0.85, period: 8000 * φ, phase: 0.70 };
+
+    const MIN_GAP = 0.01; // minimum spacing between adjacent stops
+    let rafId  = null;
+    let _alive = true;
+
+    function frame(ts) {
+      if (!_alive) return;
+      const sec = ts * 0.001;
+
+      // Compute raw offsets from dual oscillators per stop.
+      const raw = OSC.map(o => {
+        const w1 = (2 * Math.PI / (o.p1 * 0.001)) * sec + o.ph1;
+        const w2 = (2 * Math.PI / (o.p2 * 0.001)) * sec + o.ph2;
+        return o.center + o.amp * Math.sin(w1) + o.amp * 0.4 * Math.sin(w2);
+      });
+
+      // Enforce ordering so stops never invert (which would make the gradient collapse).
+      for (let i = 1; i < raw.length; i++) {
+        if (raw[i] < raw[i - 1] + MIN_GAP) raw[i] = raw[i - 1] + MIN_GAP;
+      }
+      // Clamp last stop to ≤ 1, shifting all stops down equally if needed.
+      if (raw[raw.length - 1] > 1) {
+        const excess = raw[raw.length - 1] - 1;
+        for (let i = 0; i < raw.length; i++) raw[i] = Math.max(0, raw[i] - excess);
+      }
+
+      stopEls.forEach((s, i) => s.setAttribute("offset", raw[i].toFixed(4)));
+
+      // Stage glow pulse — breathes independently of stop positions.
+      // No stop-opacity changes: all stops remain fully opaque so the
+      // gradient always transitions smoothly through every colour.
+      const bw = (2 * Math.PI / (GLOW_OSC.period * 0.001)) * sec + GLOW_OSC.phase;
+      const glow = GLOW_OSC.center + GLOW_OSC.amp * Math.sin(bw);
+      const cyanA = (0.30 * glow).toFixed(3);
+      const purpA = (0.22 * glow).toFixed(3);
+      stage.style.boxShadow = [
+        GLASS_BASE_SHADOW,
+        `inset 0 0 8px rgba(0,240,255,${cyanA})`,
+        `inset 0 0 16px rgba(180,77,255,${purpA})`,
+        `0 0 14px rgba(0,240,255,${(0.15 * glow).toFixed(3)})`,
+      ].join(", ");
+
+      rafId = requestAnimationFrame(frame);
+    }
+
+    rafId = requestAnimationFrame(frame);
+
+    shell._stopLogoAnim = () => {
+      _alive = false;
+      if (rafId !== null) cancelAnimationFrame(rafId);
+      if (path)  path.setAttribute("fill", "currentColor");
+      if (stage) stage.style.boxShadow = "";
+      const injectedGrad = defs && defs.querySelector("#_glass-logo-grad");
+      if (injectedGrad) injectedGrad.remove();
+    };
+
+  } else {
+    // ── Non-glass: neon sign glow state machine ─────────────────────────
+    //
+    // States and their visual profile:
+    //   full    — tube fully energised, strong warm bloom
+    //   dim     — partially lit, muted glow, desaturated orange
+    //   flicker — rapid voltage instability before settling
+    //   off     — tube dark, no glow at all
+    //   surge   — momentary over-voltage spike, extra-bright
+
+    // Restore path to currentColor in case we're coming from glass mode.
+    const path = shell.querySelector("path");
+    if (path) {
+      path.setAttribute("fill", "currentColor");
+      path.style.opacity = "1";
+    }
+    shell.style.transform = "none";
+
+    const COLOR_FULL    = "242, 110, 34";   // warm orange  — fully ionised
+    const COLOR_DIM     = "210,  90, 20";   // slightly cooler, less saturated
+    const COLOR_SURGE   = "255, 140, 60";   // hot white-orange surge
+
+    // Grab the parent stage so we can animate its box-shadow.
+    // box-shadow is fully contained within the stage's border-box;
+    // filter:drop-shadow bleeds outside border-radius and causes artefacts.
+    const stage = shell.closest(".brand-wordmark-stage") || shell.parentElement;
+
+    const BASE_SHADOW =
+      "inset 0 1px 0 rgba(242,110,34,0.12), inset 0 -1px 0 rgba(0,0,0,0.22), 0 2px 6px rgba(0,0,0,0.28)";
+
+    function applyGlow(intensity, colorRgb) {
+      shell.style.filter = "";
+      const clamped = Math.max(0, intensity);
+      if (clamped <= 0) {
+        stage.style.boxShadow = BASE_SHADOW;
+        return;
+      }
+      const a1 = (0.6  * clamped).toFixed(3);
+      const a2 = (0.25 * clamped).toFixed(3);
+      const r1 = Math.round(6  * clamped);
+      const r2 = Math.round(14 * clamped);
+      stage.style.boxShadow = [
+        BASE_SHADOW,
+        `inset 0 0 ${r1}px rgba(${colorRgb},${a1})`,
+        `inset 0 0 ${r2}px rgba(${colorRgb},${a2})`,
+      ].join(", ");
+    }
+
+    function rand(min, max) { return min + Math.random() * (max - min); }
+    function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+    async function stateFull()    { applyGlow(1.0, COLOR_FULL);  await delay(rand(2000, 5000)); }
+    async function stateDim()     { applyGlow(rand(0.25, 0.55), COLOR_DIM); await delay(rand(800, 2500)); }
+    async function stateOff()     { applyGlow(0, COLOR_FULL);    await delay(rand(200, 900)); }
+    async function stateSurge() {
+      applyGlow(1.35, COLOR_SURGE); await delay(rand(40, 90));
+      applyGlow(1.0,  COLOR_FULL);  await delay(rand(60, 150));
+    }
+    async function stateFlicker() {
+      const cycles = Math.floor(rand(2, 6));
+      for (let i = 0; i < cycles; i++) {
+        applyGlow(rand(0.05, 0.3), COLOR_DIM);  await delay(rand(40, 100));
+        applyGlow(rand(0.7,  1.0), COLOR_FULL); await delay(rand(50, 130));
+      }
+      if (Math.random() < 0.4) {
+        applyGlow(0, COLOR_FULL);              await delay(rand(80, 300));
+      } else {
+        applyGlow(rand(0.3, 0.6), COLOR_DIM); await delay(rand(200, 600));
+      }
+    }
+
+    // Weights: full 45 | dim 25 | flicker 18 | off 9 | surge 3
+    const STATES = [
+      { weight: 45, fn: stateFull    },
+      { weight: 25, fn: stateDim     },
+      { weight: 18, fn: stateFlicker },
+      { weight:  9, fn: stateOff     },
+      { weight:  3, fn: stateSurge   },
+    ];
+    const TOTAL_WEIGHT = STATES.reduce((s, x) => s + x.weight, 0);
+    function pickState() {
+      let r = Math.random() * TOTAL_WEIGHT;
+      for (const s of STATES) { r -= s.weight; if (r <= 0) return s.fn; }
+      return STATES[0].fn;
+    }
+
     applyGlow(1.0, COLOR_FULL);
-    await delay(rand(2000, 5000));
+    let _running = true;
+    (async () => {
+      applyGlow(1.0, COLOR_FULL);
+      await delay(1200);
+      while (_running) await pickState()();
+    })();
+
+    shell._stopLogoAnim = () => {
+      _running = false;
+      if (stage) stage.style.boxShadow = "";
+    };
   }
-
-  async function stateDim() {
-    const level = rand(0.25, 0.55);
-    applyGlow(level, COLOR_DIM);
-    await delay(rand(800, 2500));
-  }
-
-  async function stateOff() {
-    applyGlow(0, COLOR_FULL);
-    await delay(rand(200, 900));
-  }
-
-  async function stateSurge() {
-    // Instant spike to over-bright, then hard-cut back to full
-    applyGlow(1.35, COLOR_SURGE);
-    await delay(rand(40, 90));
-    applyGlow(1.0, COLOR_FULL);
-    await delay(rand(60, 150));
-  }
-
-  async function stateFlicker() {
-    // 2–5 rapid on/off bursts, then the tube either settles or goes dim
-    const cycles = Math.floor(rand(2, 6));
-    for (let i = 0; i < cycles; i++) {
-      applyGlow(rand(0.05, 0.3), COLOR_DIM);
-      await delay(rand(40, 100));
-      applyGlow(rand(0.7, 1.0), COLOR_FULL);
-      await delay(rand(50, 130));
-    }
-    // Sometimes drop out, sometimes hold dim after the flicker burst
-    if (Math.random() < 0.4) {
-      applyGlow(0, COLOR_FULL);
-      await delay(rand(80, 300));
-    } else {
-      applyGlow(rand(0.3, 0.6), COLOR_DIM);
-      await delay(rand(200, 600));
-    }
-  }
-
-  // ── Weighted random state picker ─────────────────────────────────────
-  // Weights: full 45 | dim 25 | flicker 18 | off 9 | surge 3
-  const STATES = [
-    { weight: 45, fn: stateFull    },
-    { weight: 25, fn: stateDim     },
-    { weight: 18, fn: stateFlicker },
-    { weight:  9, fn: stateOff     },
-    { weight:  3, fn: stateSurge   },
-  ];
-  const TOTAL_WEIGHT = STATES.reduce((s, x) => s + x.weight, 0);
-
-  function pickState() {
-    let r = Math.random() * TOTAL_WEIGHT;
-    for (const s of STATES) {
-      r -= s.weight;
-      if (r <= 0) return s.fn;
-    }
-    return STATES[0].fn;
-  }
-
-  // ── Main loop ────────────────────────────────────────────────────────
-  // Pre-set the stage glow immediately so it's never unset from frame zero.
-  applyGlow(1.0, COLOR_FULL);
-
-  let _running = true;
-  (async () => {
-    applyGlow(1.0, COLOR_FULL);
-    await delay(1200); // brief "just turned on" hold before glitching starts
-    while (_running) {
-      await pickState()();
-    }
-  })();
-
-  // Expose a stop handle on the shell in case the logo is ever torn down.
-  shell._stopNeon = () => { _running = false; };
 }
 
 function initializeBrandLogo() {

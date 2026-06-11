@@ -114,6 +114,597 @@
   --liquid-glass-hover-shadow: 0 1px 0 rgba(255,255,255,0.90) inset, 0 4px 14px rgba(0,0,0,0.12);
 }
 
+/* ══════════════════════════════════════════════════════════════════
+   GLASS THEME — map fills the viewport, all modules float as liquid
+   glass panels on top. Triggered by data-theme="glass".
+   ══════════════════════════════════════════════════════════════════ */
+:root[data-theme="glass"] {
+  --bg: transparent;
+  --panel: rgba(255, 255, 255, 0.10);
+  --panel-strong: rgba(255, 255, 255, 0.14);
+  --border: rgba(255, 255, 255, 0.22);
+  --text: #ffffff;
+  --muted: rgba(255, 255, 255, 0.62);
+  --accent: #F26E22;
+  --accent-soft: rgba(242, 110, 34, 0.18);
+  --danger: #ff7b7b;
+  --shadow:
+    0 8px 32px rgba(0, 0, 0, 0.38),
+    0 2px 8px  rgba(0, 0, 0, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.22);
+  --radius: 20px;
+  --table-height: 34vh;
+  --bg-gradient-top: transparent;
+  --bg-gradient-bottom: transparent;
+  --surface: rgba(255, 255, 255, 0.12);
+  --surface-hover: rgba(255, 255, 255, 0.20);
+  --card: rgba(255, 255, 255, 0.10);
+  --line-muted: rgba(255, 255, 255, 0.14);
+  --panel-highlight: rgba(255, 255, 255, 0.28);
+  --map-toolbar-bg: rgba(255, 255, 255, 0.10);
+  --input-bg: rgba(255, 255, 255, 0.10);
+  --input-placeholder: rgba(255, 255, 255, 0.40);
+  --table-bg: rgba(255, 255, 255, 0.06);
+  --table-header-bg: rgba(255, 255, 255, 0.12);
+  --table-row-alt: rgba(255, 255, 255, 0.03);
+  --selected-row-bg: rgba(242, 110, 34, 0.18);
+  --selected-row-shadow: rgba(242, 110, 34, 0.16);
+  --help-panel-bg: rgba(255, 255, 255, 0.08);
+  --rule-card-bg: rgba(255, 255, 255, 0.10);
+  --modal-backdrop: rgba(0, 0, 0, 0.38);
+  --modal-bg: rgba(20, 20, 30, 0.55);
+  --calculator-column-bg: rgba(255, 255, 255, 0.07);
+  --chip-bg: rgba(255, 255, 255, 0.10);
+  --chip-hover-bg: rgba(255, 255, 255, 0.18);
+  --preview-bg: rgba(255, 255, 255, 0.08);
+  --drop-overlay-bg: rgba(0, 0, 0, 0.30);
+  --drop-overlay-card-bg: linear-gradient(135deg, rgba(242, 110, 34, 0.15), rgba(255, 255, 255, 0.10));
+  --drop-overlay-border: rgba(242, 110, 34, 0.60);
+  --scroll-thumb: rgba(255, 255, 255, 0.28);
+  --scroll-track: rgba(255, 255, 255, 0.06);
+  --leaflet-bg: #0a0a0a;
+  --leaflet-bar-bg: rgba(255, 255, 255, 0.12);
+  --leaflet-bar-hover-bg: rgba(255, 255, 255, 0.22);
+  --leaflet-bar-text: #ffffff;
+  --leaflet-bar-border: rgba(255, 255, 255, 0.22);
+  --leaflet-popup-bg: rgba(20, 20, 30, 0.72);
+  --leaflet-popup-text: #ffffff;
+  --status-error: #ff7b7b;
+  --logo-stroke-soft: #80f8ff;
+  --logo-stroke-strong: #00f0ff;
+  --logo-glow: rgba(0, 240, 255, 0.40);
+  color-scheme: dark;
+  /* Enhanced liquid glass for glass mode */
+  --liquid-glass-bg: rgba(255, 255, 255, 0.13);
+  --liquid-glass-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.30) inset,
+    0 -1px 0 rgba(0, 0, 0, 0.12) inset,
+    0 4px 20px rgba(0, 0, 0, 0.30),
+    0 1px 3px rgba(0, 0, 0, 0.18);
+  --liquid-glass-hover-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.42) inset,
+    0 -1px 0 rgba(0, 0, 0, 0.12) inset,
+    0 8px 28px rgba(0, 0, 0, 0.36),
+    0 2px 6px rgba(0, 0, 0, 0.22);
+}
+
+/* ── GLASS LAYOUT STRATEGY ─────────────────────────────────────────
+   Keep the entire app-shell grid intact (sidebar + workspace columns,
+   map-panel + table-panel rows). The Leaflet #map div is stretched
+   fixed to fill the viewport at z-index 1. The .map-panel becomes a
+   transparent pointer-events:none overlay at z-index 2 so clicks fall
+   through to the map — but its floating children (buttons, tools) are
+   pointer-events:auto so they still work.
+   ───────────────────────────────────────────────────────────────── */
+
+/* body/html: dark base, no gradient overlay */
+:root[data-theme="glass"] html,
+:root[data-theme="glass"] body {
+  background: #0a0a14 !important;
+}
+
+/* App-shell: transparent + above the map */
+:root[data-theme="glass"] .app-shell {
+  background: transparent !important;
+  position: relative;
+  z-index: 2;
+}
+
+/* #map: pull fixed to fill entire viewport, sit at z 1 */
+:root[data-theme="glass"] #map {
+  position: fixed !important;
+  inset: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  z-index: 1 !important;
+  border-radius: 0 !important;
+}
+
+/* .map-panel: stays in its grid slot but is fully transparent.
+   pointer-events:none so clicks fall through to the #map below,
+   except for its direct floating children (theme btn, tools etc.)
+   which override back to auto. */
+:root[data-theme="glass"] .map-panel {
+  position: relative !important;
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  overflow: visible !important;
+  pointer-events: none !important;
+  z-index: 3 !important;
+}
+
+/* Re-enable pointer events on all floating overlays inside .map-panel */
+:root[data-theme="glass"] .map-panel > *,
+:root[data-theme="glass"] .map-panel .floating-theme-btn,
+:root[data-theme="glass"] .map-panel .floating-table-btn,
+:root[data-theme="glass"] .map-panel .floating-basemap-btn,
+:root[data-theme="glass"] .map-panel .floating-dem-btn,
+:root[data-theme="glass"] .map-panel .floating-tools-btn,
+:root[data-theme="glass"] .map-panel .basemap-picker,
+:root[data-theme="glass"] .map-panel .tools-picker,
+:root[data-theme="glass"] .map-panel .map-tools-dock,
+:root[data-theme="glass"] .map-panel .map-tool-btn,
+:root[data-theme="glass"] .map-panel .import-progress-card {
+  pointer-events: auto !important;
+}
+
+/* Workspace panel: transparent so fixed map is visible */
+:root[data-theme="glass"] .workspace-panel {
+  background: transparent !important;
+  position: relative;
+  z-index: 2;
+}
+
+/* Table panel: glass card floating at bottom */
+:root[data-theme="glass"] .table-panel {
+  position: relative;
+  z-index: 10;
+  background: rgba(10, 12, 20, 0.40) !important;
+  backdrop-filter: blur(28px) saturate(1.8) brightness(1.05) !important;
+  -webkit-backdrop-filter: blur(28px) saturate(1.8) brightness(1.05) !important;
+  border: 1px solid rgba(255, 255, 255, 0.20) !important;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.22) inset,
+    0 -1px 0 rgba(0, 0, 0, 0.14) inset,
+    0 8px 40px rgba(0, 0, 0, 0.40) !important;
+}
+
+/* Sidebar panels float above map */
+:root[data-theme="glass"] .sidebar {
+  position: relative;
+  z-index: 10;
+  overflow: visible;
+}
+
+/* All panels, brand-block get full liquid glass treatment */
+:root[data-theme="glass"] .brand-block,
+:root[data-theme="glass"] .panel {
+  position: relative !important;
+  background: rgba(10, 12, 20, 0.40) !important;
+  backdrop-filter: blur(28px) saturate(1.8) brightness(1.05) !important;
+  -webkit-backdrop-filter: blur(28px) saturate(1.8) brightness(1.05) !important;
+  border: 1px solid rgba(255, 255, 255, 0.20) !important;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.22) inset,
+    0 -1px 0 rgba(0, 0, 0, 0.14) inset,
+    0 8px 40px rgba(0, 0, 0, 0.40),
+    0 2px 8px rgba(0, 0, 0, 0.24) !important;
+}
+
+/* Top specular highlight rim on every glass panel */
+:root[data-theme="glass"] .brand-block::before,
+:root[data-theme="glass"] .panel::before,
+:root[data-theme="glass"] .table-panel::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(160deg,
+    rgba(255, 255, 255, 0.14) 0%,
+    rgba(255, 255, 255, 0.05) 35%,
+    rgba(255, 255, 255, 0.00) 60%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Floating tool panels (viewshed / watershed / peaks) */
+:root[data-theme="glass"] .vs-panel,
+:root[data-theme="glass"] .wt-panel {
+  background: rgba(10, 12, 20, 0.42) !important;
+  backdrop-filter: blur(28px) saturate(1.8) !important;
+  -webkit-backdrop-filter: blur(28px) saturate(1.8) !important;
+  border: 1px solid rgba(255, 255, 255, 0.20) !important;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.22) inset,
+    0 8px 40px rgba(0, 0, 0, 0.42) !important;
+}
+
+:root[data-theme="glass"] .vs-panel-header,
+:root[data-theme="glass"] .wt-panel-header {
+  background: rgba(255, 255, 255, 0.06) !important;
+  border-bottom-color: rgba(255, 255, 255, 0.14) !important;
+}
+
+:root[data-theme="glass"] .vs-panel-footer {
+  background: rgba(255, 255, 255, 0.05) !important;
+  border-top-color: rgba(255, 255, 255, 0.14) !important;
+}
+
+:root[data-theme="glass"] .pk-panel-footer {
+  background: rgba(255, 255, 255, 0.05) !important;
+  border-top-color: rgba(255, 255, 255, 0.14) !important;
+}
+
+/* Modals */
+:root[data-theme="glass"] .modal-card {
+  background: rgba(10, 12, 20, 0.52) !important;
+  backdrop-filter: blur(32px) saturate(1.8) !important;
+  -webkit-backdrop-filter: blur(32px) saturate(1.8) !important;
+  border: 1px solid rgba(255, 255, 255, 0.20) !important;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.22) inset,
+    0 20px 60px rgba(0, 0, 0, 0.55) !important;
+}
+
+/* Help modal */
+:root[data-theme="glass"] .modal-card-wide {
+  background: rgba(10, 12, 20, 0.52) !important;
+  backdrop-filter: blur(32px) saturate(1.8) !important;
+  -webkit-backdrop-filter: blur(32px) saturate(1.8) !important;
+  border: 1px solid rgba(255, 255, 255, 0.18) !important;
+}
+
+/* Dropdowns / basemap picker */
+:root[data-theme="glass"] .basemap-dropdown {
+  background: rgba(10, 12, 20, 0.52) !important;
+  backdrop-filter: blur(28px) saturate(1.8) !important;
+  -webkit-backdrop-filter: blur(28px) saturate(1.8) !important;
+  border-color: rgba(255, 255, 255, 0.20) !important;
+}
+
+/* Floating buttons — crisp glass pills */
+:root[data-theme="glass"] .floating-theme-btn,
+:root[data-theme="glass"] .floating-table-btn,
+:root[data-theme="glass"] .floating-basemap-btn,
+:root[data-theme="glass"] .floating-dem-btn {
+  background: rgba(255, 255, 255, 0.14) !important;
+  backdrop-filter: blur(20px) saturate(1.8) !important;
+  -webkit-backdrop-filter: blur(20px) saturate(1.8) !important;
+  border-color: rgba(255, 255, 255, 0.26) !important;
+  color: #ffffff !important;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.32) inset,
+    0 4px 16px rgba(0, 0, 0, 0.32) !important;
+}
+
+:root[data-theme="glass"] .floating-theme-btn:hover,
+:root[data-theme="glass"] .floating-table-btn:hover,
+:root[data-theme="glass"] .floating-basemap-btn:hover,
+:root[data-theme="glass"] .floating-dem-btn:hover {
+  background: rgba(255, 255, 255, 0.22) !important;
+}
+
+/* Tools picker — glass mode visual styling.
+   Position is fixed top-right in all themes; no position override here. */
+:root[data-theme="glass"] .floating-tools-btn {
+  background: rgba(255, 255, 255, 0.14) !important;
+  backdrop-filter: blur(20px) saturate(1.8) !important;
+  -webkit-backdrop-filter: blur(20px) saturate(1.8) !important;
+  border-color: rgba(255, 255, 255, 0.26) !important;
+  color: #ffffff !important;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.32) inset,
+    0 4px 16px rgba(0, 0, 0, 0.32) !important;
+}
+
+:root[data-theme="glass"] .floating-tools-btn:hover {
+  background: rgba(255, 255, 255, 0.22) !important;
+}
+
+:root[data-theme="glass"] .floating-tools-btn.is-active,
+:root[data-theme="glass"] .floating-tools-btn[aria-expanded="true"] {
+  background: rgba(242, 110, 34, 0.22) !important;
+  border-color: rgba(242, 110, 34, 0.55) !important;
+  color: #F26E22 !important;
+}
+
+:root[data-theme="glass"] .tools-dropdown {
+  background: rgba(10, 12, 20, 0.58) !important;
+  backdrop-filter: blur(28px) saturate(1.8) !important;
+  -webkit-backdrop-filter: blur(28px) saturate(1.8) !important;
+  border: 1px solid rgba(255, 255, 255, 0.20) !important;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.16) inset,
+    0 16px 48px rgba(0, 0, 0, 0.48) !important;
+}
+
+:root[data-theme="glass"] .tool-option {
+  color: rgba(255, 255, 255, 0.85) !important;
+}
+
+:root[data-theme="glass"] .tool-option:hover {
+  background: rgba(255, 255, 255, 0.10) !important;
+  border-color: rgba(255, 255, 255, 0.18) !important;
+}
+
+:root[data-theme="glass"] .tool-option[aria-selected="true"] {
+  background: rgba(242, 110, 34, 0.18) !important;
+  border-color: rgba(242, 110, 34, 0.40) !important;
+}
+
+:root[data-theme="glass"] .tool-icon-wrap {
+  background: rgba(255, 255, 255, 0.08) !important;
+  border-color: rgba(255, 255, 255, 0.16) !important;
+  color: rgba(255, 255, 255, 0.60) !important;
+}
+
+:root[data-theme="glass"] .tools-dropdown-header {
+  color: rgba(255, 255, 255, 0.45) !important;
+}
+
+/* Map tools dock — glass strip:
+   The dock is a bare flex column; each button has its own glass pill.
+   Removing the container background/backdrop/shadow prevents the
+   semi-transparent "ghost" rectangle that used to show through the
+   gaps between buttons. */
+:root[data-theme="glass"] .map-tools-dock {
+  background: transparent !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+
+:root[data-theme="glass"] .map-tool-btn {
+  color: rgba(255, 255, 255, 0.80) !important;
+  background: rgba(255, 255, 255, 0.13) !important;
+  backdrop-filter: blur(20px) saturate(1.8) !important;
+  -webkit-backdrop-filter: blur(20px) saturate(1.8) !important;
+  border-color: rgba(255, 255, 255, 0.22) !important;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.28) inset,
+    0 4px 16px rgba(0, 0, 0, 0.28) !important;
+}
+
+:root[data-theme="glass"] .map-tool-btn:hover,
+:root[data-theme="glass"] .map-tool-btn.is-active {
+  color: #ffffff !important;
+  background: rgba(255, 255, 255, 0.14) !important;
+}
+
+/* Coordinate pill */
+:root[data-theme="glass"] .map-coord-pill {
+  background: rgba(10, 12, 20, 0.40) !important;
+  backdrop-filter: blur(16px) !important;
+  -webkit-backdrop-filter: blur(16px) !important;
+  border-color: rgba(255, 255, 255, 0.18) !important;
+  color: rgba(255, 255, 255, 0.85) !important;
+  bottom: -4px !important;
+}
+
+/* Dark inputs get a glassy tint */
+:root[data-theme="glass"] .dark-input,
+:root[data-theme="glass"] select.dark-input {
+  background: rgba(255, 255, 255, 0.08) !important;
+  border-color: rgba(255, 255, 255, 0.18) !important;
+  color: #ffffff !important;
+}
+
+:root[data-theme="glass"] .dark-input::placeholder {
+  color: rgba(255, 255, 255, 0.38) !important;
+}
+
+/* Fix native <select> dropdown option list in glass mode.
+   Browsers render the <option> popup outside the CSS context, so
+   we must give options a solid dark background and dark text so
+   they are readable regardless of the page's glass/transparent styling. */
+:root[data-theme="glass"] select.dark-input option,
+:root[data-theme="glass"] select option {
+  background-color: #1e2535 !important;
+  color: #e8eaf0 !important;
+}
+
+:root[data-theme="glass"] select.dark-input option:checked,
+:root[data-theme="glass"] select.dark-input option:hover,
+:root[data-theme="glass"] select option:checked,
+:root[data-theme="glass"] select option:hover {
+  background-color: #2e3f5c !important;
+  color: #ffffff !important;
+}
+
+/* Ghost / icon buttons in glass mode */
+:root[data-theme="glass"] .ghost-button {
+  color: rgba(255, 255, 255, 0.82);
+  border-color: rgba(255, 255, 255, 0.18);
+}
+
+:root[data-theme="glass"] .ghost-button:hover {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.28);
+}
+
+:root[data-theme="glass"] .icon-button {
+  background: rgba(255, 255, 255, 0.10);
+  border-color: rgba(255, 255, 255, 0.22);
+  color: rgba(255, 255, 255, 0.82);
+  backdrop-filter: blur(12px);
+}
+
+:root[data-theme="glass"] .icon-button:hover {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+/* Layer cards */
+:root[data-theme="glass"] .layer-card {
+  background: rgba(255, 255, 255, 0.08) !important;
+  border-color: rgba(255, 255, 255, 0.16) !important;
+  backdrop-filter: blur(10px) !important;
+}
+
+:root[data-theme="glass"] .layer-card:hover {
+  background: rgba(255, 255, 255, 0.13) !important;
+}
+
+/* Import progress card */
+:root[data-theme="glass"] .import-progress-card {
+  background: rgba(10, 12, 20, 0.48) !important;
+  backdrop-filter: blur(20px) !important;
+  border-color: rgba(255, 255, 255, 0.20) !important;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.20) inset,
+    0 4px 20px rgba(0, 0, 0, 0.38) !important;
+}
+
+/* Table elements */
+:root[data-theme="glass"] .table-wrap {
+  background: transparent !important;
+}
+
+:root[data-theme="glass"] .table-cell-input {
+  background: transparent !important;
+  color: rgba(255, 255, 255, 0.90) !important;
+}
+
+/* Chip / tag elements */
+:root[data-theme="glass"] .chip,
+:root[data-theme="glass"] .filter-chip {
+  background: rgba(255, 255, 255, 0.10) !important;
+  border-color: rgba(255, 255, 255, 0.20) !important;
+  color: rgba(255, 255, 255, 0.85) !important;
+  backdrop-filter: blur(8px) !important;
+}
+
+/* Scrollbar in glass mode */
+:root[data-theme="glass"] ::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.04);
+}
+:root[data-theme="glass"] ::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.22);
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+/* Panel heading dividers */
+:root[data-theme="glass"] .panel-heading {
+  border-bottom-color: rgba(255, 255, 255, 0.14);
+}
+
+/* Rule card */
+:root[data-theme="glass"] .rule-card {
+  background: rgba(255, 255, 255, 0.07) !important;
+  border-color: rgba(255, 255, 255, 0.16) !important;
+}
+
+/* Theme button label for glass mode */
+:root[data-theme="glass"] #theme-cycle-btn {
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  background: rgba(242, 110, 34, 0.20) !important;
+  border-color: rgba(242, 110, 34, 0.45) !important;
+  color: #ffffff !important;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.28) inset,
+    0 0 12px rgba(242, 110, 34, 0.20),
+    0 4px 16px rgba(0, 0, 0, 0.32) !important;
+}
+
+/* Project popover */
+:root[data-theme="glass"] .project-popover {
+  background: rgba(10, 12, 20, 0.58) !important;
+  backdrop-filter: blur(28px) saturate(1.8) !important;
+  -webkit-backdrop-filter: blur(28px) saturate(1.8) !important;
+  border: 1px solid rgba(255, 255, 255, 0.20) !important;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.16) inset,
+    0 16px 48px rgba(0, 0, 0, 0.48) !important;
+}
+
+/* Leaflet zoom control in glass mode */
+/* #map is position:fixed; inset:0 in glass mode, so its internal
+   .leaflet-control-container fills the full viewport. The default
+   leaflet-top-left corner (0,0) lands behind the sidebar (~420px wide
+   including padding + gap). Offset the corner into the visible map
+   area. z-index 4 puts it above the app-shell overlay at z 2–3. */
+:root[data-theme="glass"] .leaflet-control-container {
+  z-index: 4 !important;
+}
+
+:root[data-theme="glass"] .leaflet-top.leaflet-left {
+  left: 420px !important;
+  top: 20px !important;
+}
+
+:root[data-theme="glass"] .leaflet-bar {
+  background: rgba(255, 255, 255, 0.12) !important;
+  backdrop-filter: blur(16px) saturate(1.6) !important;
+  -webkit-backdrop-filter: blur(16px) saturate(1.6) !important;
+  border-color: rgba(255, 255, 255, 0.22) !important;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.22) inset,
+    0 4px 16px rgba(0, 0, 0, 0.30) !important;
+}
+
+:root[data-theme="glass"] .leaflet-bar a {
+  /* background-color only — NOT the background shorthand —
+     so leaflet-draw sprite background-image is never clobbered */
+  background-color: transparent !important;
+  color: rgba(255, 255, 255, 0.90) !important;
+  border-bottom-color: rgba(255, 255, 255, 0.14) !important;
+}
+
+:root[data-theme="glass"] .leaflet-bar a:hover {
+  background-color: rgba(255, 255, 255, 0.16) !important;
+}
+
+/* leaflet-draw sprites are dark on transparent — invert to white for glass */
+:root[data-theme="glass"] .leaflet-draw-toolbar a {
+  filter: brightness(0) invert(1);
+}
+:root[data-theme="glass"] .leaflet-draw-toolbar a.leaflet-disabled {
+  filter: brightness(0) invert(1) opacity(0.4);
+}
+
+:root[data-theme="glass"] .leaflet-popup-content-wrapper {
+  background: rgba(10, 12, 20, 0.62) !important;
+  backdrop-filter: blur(20px) !important;
+  -webkit-backdrop-filter: blur(20px) !important;
+  border: 1px solid rgba(255, 255, 255, 0.18) !important;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.42) !important;
+  color: #ffffff !important;
+}
+
+:root[data-theme="glass"] .leaflet-popup-tip {
+  background: rgba(10, 12, 20, 0.62) !important;
+}
+
+/* Panel heading text contrast in glass */
+:root[data-theme="glass"] h2 {
+  color: rgba(255, 255, 255, 0.95);
+}
+
+/* Drop zone overlay */
+:root[data-theme="glass"] .drop-overlay {
+  background: rgba(0, 0, 0, 0.38) !important;
+  backdrop-filter: blur(8px) !important;
+}
+
+:root[data-theme="glass"] .drop-overlay-card {
+  background: rgba(10, 12, 20, 0.52) !important;
+  backdrop-filter: blur(24px) !important;
+  border: 1.5px dashed rgba(242, 110, 34, 0.70) !important;
+}
+
+/* Theme button hover */
+:root[data-theme="glass"] #theme-cycle-btn:hover {
+  background: rgba(242, 110, 34, 0.32) !important;
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   END GLASS THEME
+   ══════════════════════════════════════════════════════════════════ */
+
 * {
   box-sizing: border-box;
 }
@@ -604,6 +1195,89 @@ body {
     inset 0 1px 0 rgba(242, 110, 34, 0.14),
     inset 0 -1px 0 rgba(0, 0, 0, 0.04),
     0 2px 6px rgba(0, 0, 0, 0.08);
+}
+
+/* Glass mode: replace solid opaque stage bg with transparent to avoid
+   double-frosted ghost (solid inner box on frosted outer panel) */
+:root[data-theme="glass"] .brand-wordmark-stage {
+  background: transparent;
+  border-color: rgba(0, 240, 255, 0.16);
+  box-shadow:
+    inset 0 1px 0 rgba(0, 240, 255, 0.10),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.10);
+}
+
+/* Glass mode: tint the brand-block border with the cyan/purple palette
+   and give it a subtle outer glow so it reads as the centrepiece of the sidebar */
+:root[data-theme="glass"] .brand-block {
+  border-color: rgba(0, 240, 255, 0.22) !important;
+  box-shadow:
+    0 1px 0 rgba(0, 240, 255, 0.18) inset,
+    0 -1px 0 rgba(0, 0, 0, 0.14) inset,
+    0 8px 40px rgba(0, 0, 0, 0.40),
+    0 2px 8px rgba(0, 0, 0, 0.24),
+    0 0 18px rgba(0, 240, 255, 0.08) !important;
+}
+
+/* Glass mode: override the ::before specular to use cyan tint */
+:root[data-theme="glass"] .brand-block::before {
+  background: linear-gradient(160deg,
+    rgba(0, 240, 255, 0.12) 0%,
+    rgba(180, 77, 255, 0.06) 45%,
+    rgba(255, 255, 255, 0.00) 70%) !important;
+}
+
+/* Glass mode: author-logo-shell uses cyan fill (--logo-stroke-strong is now cyan) */
+:root[data-theme="glass"] .author-logo-shell {
+  opacity: 0.50;
+}
+:root[data-theme="glass"] .author-logo-shell.morse-lit {
+  opacity: 1.0;
+  filter: drop-shadow(0 0 5px rgba(0, 240, 255, 0.65));
+}
+
+/* Glass mode: help (i) button picks up the cyan palette */
+:root[data-theme="glass"] #open-help-modal-btn.icon-button.subtle {
+  border-color: rgba(0, 240, 255, 0.22);
+  color: rgba(0, 240, 255, 0.70);
+}
+:root[data-theme="glass"] #open-help-modal-btn.icon-button.subtle:hover {
+  border-color: rgba(0, 240, 255, 0.50);
+  color: rgba(0, 240, 255, 1.0);
+  box-shadow: 0 0 8px rgba(0, 240, 255, 0.22);
+}
+
+/* ── Glass mode: layer right-click context menu ───────────────────────────
+   The base .layer-context-menu uses background: var(--panel) which in glass
+   mode is semi-transparent, letting layer card text bleed through.
+   Override with a solid-enough dark frosted surface + strong border so the
+   menu is always legible regardless of what's behind it.
+   ───────────────────────────────────────────────────────────────────────── */
+:root[data-theme="glass"] .layer-context-menu {
+  background: rgba(12, 14, 22, 0.88) !important;
+  backdrop-filter: blur(24px) saturate(1.4) !important;
+  -webkit-backdrop-filter: blur(24px) saturate(1.4) !important;
+  border: 1px solid rgba(255, 255, 255, 0.18) !important;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.10) inset,
+    0 8px 32px rgba(0, 0, 0, 0.55) !important;
+}
+
+:root[data-theme="glass"] .layer-context-action {
+  color: rgba(255, 255, 255, 0.90) !important;
+}
+
+:root[data-theme="glass"] .layer-context-action:hover {
+  background: rgba(255, 255, 255, 0.10) !important;
+  color: #ffffff !important;
+}
+
+:root[data-theme="glass"] .layer-context-action.remove {
+  color: #ff6b6b !important;
+}
+
+:root[data-theme="glass"] .layer-context-action.accent-action {
+  color: rgba(242, 110, 34, 0.95) !important;
 }
 
 /* Spatial-DECM wordmark shell */
@@ -1838,6 +2512,160 @@ li {
   mix-blend-mode: normal;
 }
 
+/* ── Tools picker ──────────────────────────────────────────────────────── */
+.tools-picker {
+  position: absolute;
+  top: 18px;
+  right: 222px;   /* basemap-picker is at right:168px (44px wide) + 10px gap */
+  z-index: 500;
+}
+
+.floating-tools-btn {
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(14px) saturate(1.6);
+  -webkit-backdrop-filter: blur(14px) saturate(1.6);
+  background: var(--liquid-glass-bg, var(--surface));
+  box-shadow: var(--liquid-glass-shadow);
+  transition: color 160ms ease, border-color 160ms ease, background 160ms ease, box-shadow 160ms ease;
+}
+
+.floating-tools-btn[aria-expanded="true"],
+.floating-tools-btn.is-active {
+  border-color: color-mix(in srgb, var(--accent) 50%, transparent);
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.floating-tools-btn svg {
+  width: 20px;
+  height: 20px;
+}
+
+.tools-dropdown {
+  position: absolute;
+  top: calc(100% + 10px);   /* opens downward */
+  right: 0;                  /* right-aligns with the trigger button */
+  left: auto;
+  width: 224px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 10px;
+  display: grid;
+  gap: 4px;
+  box-shadow: var(--shadow);
+  z-index: 600;
+  transform-origin: top right;
+  animation: tools-drop-in 140ms ease;
+}
+
+@keyframes tools-drop-in {
+  from { opacity: 0; transform: scale(0.95) translateY(-4px); }
+  to   { opacity: 1; transform: scale(1)    translateY(0); }
+}
+
+.tools-dropdown[hidden] {
+  display: none;
+}
+
+.tools-dropdown-header {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--muted);
+  padding: 2px 6px 6px;
+  margin: 0;
+  font-weight: 500;
+}
+
+.tool-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 8px;
+  border-radius: 10px;
+  cursor: pointer;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  width: 100%;
+  transition: background 140ms ease, border-color 140ms ease;
+}
+
+.tool-option:hover {
+  background: var(--surface-hover);
+  border-color: var(--border);
+}
+
+.tool-option[aria-selected="true"] {
+  background: var(--accent-soft);
+  border-color: color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
+.tool-icon-wrap {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: var(--muted);
+  transition: color 140ms ease, border-color 140ms ease, background 140ms ease;
+}
+
+.tool-option:hover .tool-icon-wrap {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+  background: var(--accent-soft);
+}
+
+.tool-option[aria-selected="true"] .tool-icon-wrap {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.tool-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.tool-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+  line-height: 1.2;
+}
+
+.tool-option[aria-selected="true"] .tool-name {
+  color: var(--accent);
+}
+
+.tool-desc {
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.2;
+}
+
+
+
 .table-toggle-button {
   display: inline-flex;
   align-items: center;
@@ -2150,19 +2978,20 @@ li {
 
 /* ── Symbology modal: inner class-list scroll zones ──────────────── */
 
-/* Class list scroll zone: fixed max-height with inner scroll + fade hint */
+/* Class list scroll zone: grows inside the flex tab panel, scroll is
+   handled by the parent .modal-tab-panel — this zone just lays out rows */
 .class-list-scroll-zone {
   position: relative;
   margin-top: .5rem;
 }
 
 .class-list-scroll-zone .class-list-inner {
-  max-height: 260px;
-  overflow-y: auto;
+  /* Remove hardcoded 260px cap — the outer .modal-tab-panel scrolls */
+  overflow-y: visible;
   display: flex;
   flex-direction: column;
   gap: 4px;
-  padding-bottom: 28px; /* room for fade gradient */
+  padding-bottom: 12px;
   scrollbar-width: thin;
   scrollbar-color: var(--border) transparent;
 }
@@ -2178,18 +3007,7 @@ li {
   background: transparent;
 }
 
-/* Fade gradient at the bottom to hint at more rows */
-.class-list-scroll-zone::after {
-  content: "";
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 5px;
-  height: 36px;
-  background: linear-gradient(to bottom, transparent, var(--modal-bg));
-  pointer-events: none;
-  border-radius: 0 0 8px 8px;
-}
+/* Fade gradient removed — outer .modal-tab-panel handles scroll */
 
 .label-enable-row {
   margin: 12px 0 4px;
@@ -2861,9 +3679,67 @@ li {
 
 .modal-card-wide {
   width: min(1180px, calc(100vw - 28px));
+  /* explicit height (not just max-height) so flex children can grow into it */
+  height: min(90vh, 900px);
+  max-height: 90vh;
   display: flex;
   flex-direction: column;
-  max-height: 90vh;
+  overflow: hidden;
+}
+
+/* ── Modal flex layout: fixed chrome + scrolling body ─────────────
+   Header, note, tabs and action buttons never shrink or scroll.  */
+.modal-card-wide .panel-heading,
+.modal-card-wide .modal-heading,
+.modal-card-wide > .small-note,
+.modal-card-wide > p.small-note,
+.modal-card-wide .modal-tabs {
+  flex-shrink: 0;
+}
+
+/* Actions row always pinned at the bottom, never pushed off-screen */
+.modal-card-wide .modal-actions-row {
+  flex-shrink: 0;
+  margin-top: 14px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+/* ── Scrollable content areas ─────────────────────────────────────
+   Tab panels (symbology styling / labeling) grow to fill remaining
+   space and scroll internally.                                     */
+.modal-card-wide .modal-tab-panel {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+  padding-right: 4px;
+}
+
+.modal-card-wide .modal-tab-panel::-webkit-scrollbar { width: 5px; }
+.modal-card-wide .modal-tab-panel::-webkit-scrollbar-thumb {
+  background: var(--border); border-radius: 999px;
+}
+.modal-card-wide .modal-tab-panel::-webkit-scrollbar-track { background: transparent; }
+
+/* Raster shell and help shell fill the same way */
+.modal-card-wide .raster-style-shell,
+.modal-card-wide .help-shell {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+/* Modals without tab panels (interpolation, heatmap, filter) use a
+   direct .field-grid child — make that the scroll region instead    */
+.modal-card-wide > .field-grid {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
 }
 
 /* ================================================================
@@ -3491,7 +4367,19 @@ li {
   }
 
   .modal-card-wide {
+    height: auto;
     max-height: none;
+    overflow: visible;
+  }
+
+  .modal-card-wide .modal-tab-panel {
+    overflow-y: visible;
+    flex: none;
+  }
+
+  .modal-card-wide > .field-grid {
+    overflow-y: visible;
+    flex: none;
   }
 
   .modal-shell {
@@ -3504,6 +4392,14 @@ li {
 
   body {
     overflow: auto;
+  }
+
+  /* On narrow screens the sidebar collapses above the map column
+     (the glass #map still fills the full viewport), so reset the
+     zoom control back to its natural top-left position. */
+  :root[data-theme="glass"] .leaflet-top.leaflet-left {
+    left: 10px !important;
+    top: 10px !important;
   }
 }
 

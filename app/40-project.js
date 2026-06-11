@@ -590,10 +590,7 @@ async function restoreProjectFromManifest(manifest, resolveGeojson) {
     );
   }
 
-  if (manifest.themePreference) {
-    localStorage.setItem(THEME_STORAGE_KEY, manifest.themePreference);
-    applyTheme(manifest.themePreference);
-  }
+  // Theme is a user preference, not project data — never override it on load.
 
   for (const entry of (manifest.layers || [])) {
     let geojson;
